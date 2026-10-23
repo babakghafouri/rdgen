@@ -77,12 +77,16 @@ jobs:
           doNotCache: false
 
       - name: Install vcpkg dependencies
+        working-directory: rustdesk
         shell: pwsh
         run: |
           if (-not $env:VCPKG_ROOT) {
             throw "VCPKG_ROOT was not set by run-vcpkg"
           }
-          & "$env:VCPKG_ROOT\\vcpkg.exe" install --triplet x64-windows-static --x-install-root="$env:VCPKG_ROOT\\installed"
+          if (-not (Test-Path "vcpkg.json")) {
+            throw "RustDesk vcpkg.json manifest was not found in the working directory"
+          }
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --x-install-root="$env:VCPKG_ROOT\installed"
           if ($LASTEXITCODE -ne 0) { throw "vcpkg dependency installation failed" }
 
       - name: Install LLVM
