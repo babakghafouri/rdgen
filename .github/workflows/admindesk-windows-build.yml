@@ -1,0 +1,99 @@
+name: AdminDesk Independent Windows Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - name: Checkout AdminDesk configuration and patches
+        uses: actions/checkout@v4
+        with:
+          path: admindesk
+
+      - name: Checkout RustDesk 1.5.0 with submodules
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: refs/tags/1.5.0
+          submodules: recursive
+          path: rustdesk
+
+      - name: Check independent AdminDesk configuration
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+          cfg = json.loads(Path("admindesk/.github/config/AdminDesk.json").read_text(encoding="utf-8"))
+          assert cfg["exename"] == "AdminDesk"
+          assert cfg["serverIP"] == "Desk.Admin98.ir"
+          assert cfg["key"]
+          assert cfg["platform"] == "windows"
+          print("Standalone AdminDesk configuration validated")
+          '@ | python -
+
+      - name: Apply server, key and advertising patches
+        shell: pwsh
+        run: |
+          python admindesk/.github/patches/admindesk_server.py --config admindesk/.github/config/AdminDesk.json --rustdesk-root rustdesk
+          Push-Location rustdesk
+          python ../admindesk/.github/patches/admindesk_ads.py
+          Pop-Location
+
+      - name: Prepare build dependencies
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.24.5'
+
+      - name: Install Rust 1.75
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.75'
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install LLVM
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: '15.0.6'
+
+      - name: Resolve Flutter dependencies
+        working-directory: rustdesk/flutter
+        run: flutter pub get
+
+      - name: Analyze advertising widget
+        working-directory: rustdesk/flutter
+        run: dart analyze lib/desktop/pages/ad_banner.dart
+
+      - name: Build Windows client
+        working-directory: rustdesk
+        shell: pwsh
+        run: python build.py --flutter --vram
+
+      - name: Collect built executables
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path output | Out-Null
+          Get-ChildItem rustdesk -Recurse -File -Filter rustdesk.exe |
+            Where-Object { $_.FullName -match 'release|Release' } |
+            Select-Object -First 1 |
+            ForEach-Object { Copy-Item $_.FullName output/AdminDesk.exe }
+          if (-not (Test-Path output/AdminDesk.exe)) {
+            Write-Warning "No executable found; inspect build logs."
+          }
+
+      - name: Publish AdminDesk executable
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AdminDesk-Windows
+          path: output/AdminDesk.exe
+          if-no-files-found: warn
+          retention-days: 14
