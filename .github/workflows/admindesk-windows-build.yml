@@ -144,20 +144,24 @@ jobs:
         run: python build.py --flutter --vram
 
       - name: Collect built executables
-        if: always()
+        if: success()
         shell: pwsh
         run: |
+          $builtExe = "rustdesk/flutter/build/windows/x64/runner/Release/rustdesk.exe"
+          if (-not (Test-Path $builtExe)) {
+            throw "Expected Flutter Windows executable was not found: $builtExe"
+          }
+          $file = Get-Item $builtExe
+          if ($file.Length -lt 10MB) {
+            throw "Built executable is only $($file.Length) bytes; refusing to publish a likely stub or wrong file."
+          }
+          $signature = [System.IO.File]::ReadAllBytes($builtExe)[0..1]
+          if ($signature[0] -ne 0x4D -or $signature[1] -ne 0x5A) {
+            throw "Built file does not have a valid Windows PE MZ signature."
+          }
           New-Item -ItemType Directory -Force -Path output | Out-Null
-          Get-ChildItem rustdesk -Recurse -File -Filter rustdesk.exe |
-            Where-Object { $_.FullName -match 'release|Release' } |
-            Select-Object -First 1 |
-            ForEach-Object { Copy-Item $_.FullName output/AdminDesk.exe }
-          if (-not (Test-Path output/AdminDesk.exe)) {
-            throw "Windows build did not produce an executable; inspect build logs."
-          }
-          if ((Get-Item output/AdminDesk.exe).Length -lt 100000) {
-            throw "Windows executable is unexpectedly small."
-          }
+          Copy-Item $builtExe output/AdminDesk.exe
+          Write-Host "Verified AdminDesk.exe size: $((Get-Item output/AdminDesk.exe).Length) bytes"
 
       - name: Publish AdminDesk executable
         if: success()
