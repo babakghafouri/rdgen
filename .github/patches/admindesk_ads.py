@@ -146,4 +146,18 @@ if not any(line.lstrip().startswith("http:") for line in p.splitlines()):
     p = p.replace(marker, marker + "  http: ^1.2.2\n", 1)
     pubspec.write_text(p, encoding="utf-8")
 
+# Hide the editable ID/Relay/API server settings from the Network page.
+# The server address and public key are embedded at build time by admindesk_server.py.
+settings = root / "flutter/lib/desktop/pages/desktop_setting_page.dart"
+if not settings.exists():
+    raise SystemExit("desktop_setting_page.dart not found")
+settings_text = settings.read_text(encoding="utf-8")
+hide_expr = "final hideServer = true;"
+pattern = "final hideServer =\\n        bind.mainGetBuildinOption(key: kOptionHideServerSetting) == 'Y';"
+if hide_expr not in settings_text:
+    if pattern not in settings_text:
+        raise SystemExit("Could not find the server settings visibility control")
+    settings_text = settings_text.replace(pattern, hide_expr, 1)
+    settings.write_text(settings_text, encoding="utf-8")
+
 print("AdminDesk ads patch applied")
