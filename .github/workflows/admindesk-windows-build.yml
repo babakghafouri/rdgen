@@ -2,6 +2,10 @@ name: AdminDesk Independent Windows Build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [admindesk-ads]
+    paths:
+      - '.github/workflows/admindesk-windows-build.yml'
 
 permissions:
   contents: read
