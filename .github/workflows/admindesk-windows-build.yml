@@ -102,7 +102,7 @@ jobs:
               if isinstance(dependency, dict) and dependency.get("name") == "ffmpeg" and dependency.get("host") is True:
                   dependency["host"] = False
                   dependency["platform"] = "windows & static"
-          p.write_text(json.dumps(manifest, indent=2) + "\\n", encoding="utf-8")
+          p.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
           '@ | python -
 
       - name: Install vcpkg dependencies
