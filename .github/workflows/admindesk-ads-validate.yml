@@ -44,6 +44,7 @@ jobs:
           repository: rustdesk/rustdesk
           ref: refs/tags/1.5.0
           path: rustdesk
+          submodules: recursive
 
       - name: Apply AdminDesk server and key configuration
         run: python3 rdgen/.github/patches/admindesk_server.py --config rdgen/.github/config/AdminDesk.json --rustdesk-root rustdesk
@@ -101,6 +102,7 @@ jobs:
           repository: rustdesk/rustdesk
           ref: refs/tags/1.5.0
           path: rustdesk
+          submodules: recursive
 
       - name: Apply AdminDesk advertising patch
         working-directory: rustdesk
