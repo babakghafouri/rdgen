@@ -23,8 +23,8 @@ def main():
     config = root / "libs/hbb_common/src/config.rs"
     source = config.read_text(encoding="utf-8")
     def replace_one(pattern, value, label):
-        global source
-        source, count = re.subn(pattern, lambda _: value, source, count=1)
+        nonlocal source
+        source, count = re.subn(pattern, lambda match: match.expand(value) if label in ("RENDEZVOUS_PORT", "RELAY_PORT", "WS_RENDEZVOUS_PORT", "WS_RELAY_PORT") else value, source, count=1)
         if count != 1:
             raise SystemExit(f"Could not patch {label} in config.rs")
     replace_one(r"rs-ny\.rustdesk\.com", host, "server")
