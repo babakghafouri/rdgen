@@ -145,35 +145,40 @@ jobs:
         shell: pwsh
         run: python build.py --flutter --vram
 
-      - name: Collect packaged portable executable
+      - name: Collect packaged Windows executables
         if: success()
         shell: pwsh
         run: |
           $candidates = Get-ChildItem -Path rustdesk -Recurse -File -Include "rustdesk_portable.exe","rustdesk-*-install.exe" -ErrorAction SilentlyContinue
           $candidates | Select-Object FullName, Length | Format-Table -AutoSize
-          $builtExe = $candidates | Where-Object { $_.Length -ge 10MB -and $_.Name -ne "rustdesk_portable_packer.exe" } | Sort-Object Length -Descending | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $builtExe) {
-            $allExe = Get-ChildItem -Path rustdesk -Recurse -File -Filter "*.exe" -ErrorAction SilentlyContinue
-            $allExe | Select-Object FullName, Length | Format-Table -AutoSize
-            throw "No packaged app executable found (rustdesk_portable.exe or rustdesk-*-install.exe). The portable packer tool must never be published as the client."
-          }
-          $file = Get-Item $builtExe
-          if ($file.Length -lt 10MB) {
-            throw "Packaged app executable is only $($file.Length) bytes; refusing to publish an incomplete file."
-          }
-          $signature = [System.IO.File]::ReadAllBytes($builtExe)[0..1]
-          if ($signature[0] -ne 0x4D -or $signature[1] -ne 0x5A) {
-            throw "Packaged file does not have a valid Windows PE MZ signature."
+          $installer = $candidates | Where-Object { $_.Name -like "rustdesk-*-install.exe" } | Sort-Object Length -Descending | Select-Object -First 1
+          $portable = $candidates | Where-Object { $_.Name -eq "rustdesk_portable.exe" } | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $installer -and -not $portable) {
+            throw "No packaged installer or portable executable found. Refusing to publish the packer tool or raw Flutter executable."
           }
           New-Item -ItemType Directory -Force -Path output | Out-Null
-          Copy-Item $builtExe output/AdminDesk-Portable.exe
-          Write-Host "Verified packaged portable EXE size: $((Get-Item output/AdminDesk-Portable.exe).Length) bytes"
+          $outputs = @(
+            @{ File = $installer; Name = "AdminDesk-Installer.exe" }
+            @{ File = $portable; Name = "AdminDesk-Portable.exe" }
+          )
+          foreach ($item in $outputs) {
+            if (-not $item.File) { continue }
+            if ($item.File.Length -lt 10MB) {
+              throw "Packaged executable $($item.File.Name) is too small ($($item.File.Length) bytes)."
+            }
+            $signature = [System.IO.File]::ReadAllBytes($item.File.FullName)[0..1]
+            if ($signature[0] -ne 0x4D -or $signature[1] -ne 0x5A) {
+              throw "Packaged executable $($item.File.Name) lacks a Windows PE MZ signature."
+            }
+            Copy-Item $item.File.FullName (Join-Path output $item.Name)
+            Write-Host "Verified $($item.Name): $($item.File.Length) bytes"
+          }
 
       - name: Publish AdminDesk executable
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: AdminDesk-Windows
-          path: output/AdminDesk-Portable.exe
+          path: output/AdminDesk-*.exe
           if-no-files-found: error
           retention-days: 14
