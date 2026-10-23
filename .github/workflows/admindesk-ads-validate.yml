@@ -5,6 +5,7 @@ on:
     branches: [admindesk-ads]
     paths:
       - '.github/patches/admindesk_ads.py'
+      - '.github/patches/admindesk_server.py'
       - '.github/config/AdminDesk.json'
       - '.github/workflows/admindesk-ads-validate.yml'
   workflow_dispatch:
@@ -43,6 +44,21 @@ jobs:
           repository: rustdesk/rustdesk
           ref: refs/tags/1.5.0
           path: rustdesk
+
+      - name: Apply AdminDesk server and key configuration
+        run: python3 rdgen/.github/patches/admindesk_server.py --config rdgen/.github/config/AdminDesk.json --rustdesk-root rustdesk
+
+      - name: Verify server and key were embedded
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          cfg = json.loads(Path('rdgen/.github/config/AdminDesk.json').read_text())
+          source = Path('rustdesk/libs/hbb_common/src/config.rs').read_text()
+          assert cfg['serverIP'] in source
+          assert cfg['key'] in source
+          print('AdminDesk server and key patch passed')
+          PY
 
       - name: Apply advertising patch
         working-directory: rustdesk
