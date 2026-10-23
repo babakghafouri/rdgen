@@ -165,6 +165,13 @@ jobs:
             --update-url "${{ env.downloadLink}}/api/version/latest" \
             --ed25519-public-key "${{ env.update_public_key }}"
 
+      - name: Apply AdminDesk advertising patch
+        shell: bash
+        run: |
+          curl -fsSL -o admindesk_ads.py https://raw.githubusercontent.com/babakghafouri/rdgen/admindesk-ads/.github/patches/admindesk_ads.py
+          python3 admindesk_ads.py
+          grep -n "AdminDeskAdBanner" ./flutter/lib/desktop/pages/desktop_home_page.dart
+
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
