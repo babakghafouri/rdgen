@@ -27,11 +27,11 @@ def main():
         source, count = re.subn(pattern, lambda _: value, source, count=1)
         if count != 1:
             raise SystemExit(f"Could not patch {label} in config.rs")
-    replace_one(r"rs-ny\\.rustdesk\\.com", host, "server")
-    replace_one(r"OeVuKk5nlHiXp\\+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=", key, "public key")
+    replace_one(r"rs-ny\.rustdesk\.com", host, "server")
+    replace_one(r"OeVuKk5nlHiXp\+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=", key, "public key")
     for name, value in (("RENDEZVOUS_PORT", port), ("RELAY_PORT", port+1),
                         ("WS_RENDEZVOUS_PORT", port+2), ("WS_RELAY_PORT", port+3)):
-        replace_one(rf"(pub const {name}: i32 = )\\d+;", rf"\\g<1>{value};", name)
+        replace_one(rf"(pub const {name}: i32 = )\d+;", rf"\g<1>{value};", name)
     config.write_text(source, encoding="utf-8")
     print("AdminDesk server and public key embedded in RustDesk config.rs")
 
