@@ -6,12 +6,19 @@ on:
     branches: [admindesk-ads]
     paths:
       - '.github/workflows/admindesk-windows-build.yml'
+      - '.github/workflows/bridge.yml'
 
 permissions:
   contents: read
 
 jobs:
+  generate-bridge:
+    uses: ./.github/workflows/bridge.yml
+    with:
+      version: '1.5.0'
+
   build-windows:
+    needs: generate-bridge
     runs-on: windows-2022
     timeout-minutes: 360
     steps:
@@ -26,6 +33,12 @@ jobs:
           repository: rustdesk/rustdesk
           ref: refs/tags/1.5.0
           submodules: recursive
+          path: rustdesk
+
+      - name: Restore generated Flutter-Rust bridge files
+        uses: actions/download-artifact@v4
+        with:
+          name: bridge-artifact
           path: rustdesk
 
       - name: Check independent AdminDesk configuration
@@ -89,7 +102,7 @@ jobs:
               if isinstance(dependency, dict) and dependency.get("name") == "ffmpeg" and dependency.get("host") is True:
                   dependency["host"] = False
                   dependency["platform"] = "windows & static"
-          p.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          p.write_text(json.dumps(manifest, indent=2) + "\\n", encoding="utf-8")
           '@ | python -
 
       - name: Install vcpkg dependencies
@@ -102,7 +115,7 @@ jobs:
           if (-not (Test-Path "vcpkg.json")) {
             throw "RustDesk vcpkg.json manifest was not found in the working directory"
           }
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --x-install-root="$env:VCPKG_ROOT\installed"
+          & "$env:VCPKG_ROOT\\vcpkg.exe" install --triplet x64-windows-static --x-install-root="$env:VCPKG_ROOT\\installed"
           if ($LASTEXITCODE -ne 0) { throw "vcpkg dependency installation failed" }
 
       - name: Verify FFmpeg development headers
