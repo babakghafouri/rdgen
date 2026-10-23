@@ -5,6 +5,7 @@ on:
     branches: [admindesk-ads]
     paths:
       - '.github/patches/admindesk_ads.py'
+      - '.github/config/AdminDesk.json'
       - '.github/workflows/admindesk-ads-validate.yml'
   workflow_dispatch:
 
@@ -19,6 +20,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: rdgen
+
+      - name: Validate AdminDesk server and branding configuration
+        working-directory: rdgen
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          cfg = json.loads(Path('.github/config/AdminDesk.json').read_text(encoding='utf-8'))
+          assert cfg['platform'] == 'windows'
+          assert cfg['version'] == '1.5.0'
+          assert cfg['exename'] == 'AdminDesk'
+          assert cfg['serverIP'] == 'Desk.Admin98.ir'
+          assert cfg['key'].strip()
+          assert cfg['direction'] == 'both'
+          print('AdminDesk server and branding configuration validated')
+          PY
 
       - name: Checkout RustDesk 1.5.0
         uses: actions/checkout@v4
