@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/admindesk-windows-build.yml'
       - '.github/workflows/bridge.yml'
+      - '.github/patches/**'
+      - '.github/config/**'
 
 permissions:
   contents: read
