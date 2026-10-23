@@ -46,6 +46,12 @@ jobs:
           python ../admindesk/.github/patches/admindesk_ads.py
           Pop-Location
 
+      - name: Verify AdminDesk branding inputs
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "admindesk/.github/patches/admindesk_branding.py")) { throw "Branding script missing" }
+          Write-Host "Branding script found; logo injection still requires integration before release."
+
       - name: Prepare build dependencies
         uses: subosito/flutter-action@v2
         with:
@@ -86,14 +92,17 @@ jobs:
             Select-Object -First 1 |
             ForEach-Object { Copy-Item $_.FullName output/AdminDesk.exe }
           if (-not (Test-Path output/AdminDesk.exe)) {
-            Write-Warning "No executable found; inspect build logs."
+            throw "Windows build did not produce an executable; inspect build logs."
+          }
+          if ((Get-Item output/AdminDesk.exe).Length -lt 100000) {
+            throw "Windows executable is unexpectedly small."
           }
 
       - name: Publish AdminDesk executable
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: AdminDesk-Windows
           path: output/AdminDesk.exe
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
