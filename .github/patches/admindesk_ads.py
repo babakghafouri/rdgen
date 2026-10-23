@@ -51,7 +51,8 @@ class _AdminDeskAdBannerState extends State<AdminDeskAdBanner> {
       final response = await _client.get(_endpoint).timeout(const Duration(seconds: 4));
       if (response.statusCode != 200) {
         _hide();
-        return;\n      }
+        return;
+      }
       final data = jsonDecode(response.body);
       if (data is! Map<String, dynamic> ||
           data['is_active'] != true ||
