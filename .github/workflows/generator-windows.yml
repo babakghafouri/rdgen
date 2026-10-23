@@ -762,6 +762,17 @@ jobs:
         run: |
           mv ./SignOutput/rustdesk.msi "./SignOutput/${{ env.filename }}.msi" || echo "rustdesk"
 
+      - name: Upload Windows executables to GitHub Actions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AdminDesk-Windows-build
+          path: |
+            SignOutput/*.exe
+            SignOutput/*.msi
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: send file to rdgen server
         if: ${{ env.rdgen == 'true' }}
         uses: nick-fields/retry@v3
