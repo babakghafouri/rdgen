@@ -49,18 +49,18 @@ class _AdminDeskAdBannerState extends State<AdminDeskAdBanner> {
   Future<void> _load() async {
     try {
       final response = await _client.get(_endpoint).timeout(const Duration(seconds: 4));
-      if (response.statusCode != 200) return _hide();
+      if (response.statusCode != 200) {\n        _hide();\n        return;\n      }
       final data = jsonDecode(response.body);
       if (data is! Map<String, dynamic> ||
           data['is_active'] != true ||
           data['id'] is! String ||
           !_httpsUrl(data['image_url'])) {
-        return _hide();
+        _hide();\n        return;
       }
       if (!mounted) return;
       setState(() => _ad = data);
       final raw = data['refresh_seconds'];
-      final seconds = raw is int ? raw.clamp(60, 3600) : 300;
+      final seconds = raw is int ? raw.clamp(60, 3600).toInt() : 300;
       _timer?.cancel();
       _timer = Timer(Duration(seconds: seconds), _load);
     } catch (_) {
