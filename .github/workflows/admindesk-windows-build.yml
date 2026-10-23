@@ -147,9 +147,11 @@ jobs:
         if: success()
         shell: pwsh
         run: |
-          $builtExe = "rustdesk/rustdesk_portable.exe"
-          if (-not (Test-Path $builtExe)) {
-            throw "Packaged portable executable was not found: $builtExe"
+          $candidates = Get-ChildItem -Path rustdesk -Recurse -File -Filter "*portable*.exe" -ErrorAction SilentlyContinue
+          $candidates | Select-Object FullName, Length | Format-Table -AutoSize
+          $builtExe = $candidates | Where-Object { $_.Length -ge 10MB } | Sort-Object Length -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $builtExe) {
+            throw "No packaged portable EXE >= 10 MB found; inspect packaging output."
           }
           $file = Get-Item $builtExe
           if ($file.Length -lt 10MB) {
