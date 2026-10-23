@@ -147,15 +147,17 @@ jobs:
         if: success()
         shell: pwsh
         run: |
-          $candidates = Get-ChildItem -Path rustdesk -Recurse -File -Filter "*portable*.exe" -ErrorAction SilentlyContinue
+          $candidates = Get-ChildItem -Path rustdesk -Recurse -File -Include "rustdesk_portable.exe","rustdesk-*-install.exe" -ErrorAction SilentlyContinue
           $candidates | Select-Object FullName, Length | Format-Table -AutoSize
-          $builtExe = $candidates | Where-Object { $_.Length -ge 10MB } | Sort-Object Length -Descending | Select-Object -First 1 -ExpandProperty FullName
+          $builtExe = $candidates | Where-Object { $_.Length -ge 10MB -and $_.Name -ne "rustdesk_portable_packer.exe" } | Sort-Object Length -Descending | Select-Object -First 1 -ExpandProperty FullName
           if (-not $builtExe) {
-            throw "No packaged portable EXE >= 10 MB found; inspect packaging output."
+            $allExe = Get-ChildItem -Path rustdesk -Recurse -File -Filter "*.exe" -ErrorAction SilentlyContinue
+            $allExe | Select-Object FullName, Length | Format-Table -AutoSize
+            throw "No packaged app executable found (rustdesk_portable.exe or rustdesk-*-install.exe). The portable packer tool must never be published as the client."
           }
           $file = Get-Item $builtExe
           if ($file.Length -lt 10MB) {
-            throw "Packaged portable executable is only $($file.Length) bytes; refusing to publish an incomplete file."
+            throw "Packaged app executable is only $($file.Length) bytes; refusing to publish an incomplete file."
           }
           $signature = [System.IO.File]::ReadAllBytes($builtExe)[0..1]
           if ($signature[0] -ne 0x4D -or $signature[1] -ne 0x5A) {
