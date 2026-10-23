@@ -153,11 +153,12 @@ if not settings.exists():
     raise SystemExit("desktop_setting_page.dart not found")
 settings_text = settings.read_text(encoding="utf-8")
 hide_expr = "final hideServer = true;"
-pattern = "final hideServer =\\n        bind.mainGetBuildinOption(key: kOptionHideServerSetting) == 'Y';"
+import re
+pattern = r"final hideServer\s*=\s*bind\.mainGetBuildinOption\(key:\s*kOptionHideServerSetting\)\s*==\s*'Y';"
 if hide_expr not in settings_text:
-    if pattern not in settings_text:
-        raise SystemExit("Could not find the server settings visibility control")
-    settings_text = settings_text.replace(pattern, hide_expr, 1)
+    settings_text, count = re.subn(pattern, hide_expr, settings_text, count=1)
+    if count != 1:
+        raise SystemExit("Could not find the server settings visibility control; source layout may have changed")
     settings.write_text(settings_text, encoding="utf-8")
 
 print("AdminDesk ads patch applied")
