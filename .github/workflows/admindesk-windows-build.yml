@@ -76,6 +76,22 @@ jobs:
           vcpkgGitCommitId: 9e593bb18ea69cc5095e012465dcd675a822ed0d
           doNotCache: false
 
+      - name: Ensure FFmpeg is a target dependency on Windows
+        working-directory: rustdesk
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+          p = Path("vcpkg.json")
+          manifest = json.loads(p.read_text(encoding="utf-8"))
+          for dependency in manifest["dependencies"]:
+              if isinstance(dependency, dict) and dependency.get("name") == "ffmpeg" and dependency.get("host") is True:
+                  dependency["host"] = False
+                  dependency["platform"] = "windows & static"
+          p.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          '@ | python -
+
       - name: Install vcpkg dependencies
         working-directory: rustdesk
         shell: pwsh
@@ -88,6 +104,13 @@ jobs:
           }
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --x-install-root="$env:VCPKG_ROOT\installed"
           if ($LASTEXITCODE -ne 0) { throw "vcpkg dependency installation failed" }
+
+      - name: Verify FFmpeg development headers
+        shell: pwsh
+        run: |
+          $header = Join-Path $env:VCPKG_ROOT "installed/x64-windows-static/include/libavutil/pixfmt.h"
+          if (-not (Test-Path $header)) { throw "FFmpeg header missing after vcpkg install: $header" }
+          Write-Host "FFmpeg header found: $header"
 
       - name: Install LLVM
         uses: KyleMayes/install-llvm-action@v1
