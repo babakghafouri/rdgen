@@ -1,0 +1,55 @@
+name: AdminDesk Ads Patch Validation
+
+on:
+  push:
+    branches: [admindesk-ads]
+    paths:
+      - '.github/patches/admindesk_ads.py'
+      - '.github/workflows/admindesk-ads-validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-rustdesk-1-5-0:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout RDGen patch
+        uses: actions/checkout@v4
+        with:
+          path: rdgen
+
+      - name: Checkout RustDesk 1.5.0
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: refs/tags/1.5.0
+          path: rustdesk
+
+      - name: Apply advertising patch
+        working-directory: rustdesk
+        run: python3 ../rdgen/.github/patches/admindesk_ads.py
+
+      - name: Verify Windows home placement and dependencies
+        working-directory: rustdesk
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          home = Path('flutter/lib/desktop/pages/desktop_home_page.dart').read_text()
+          widget = Path('flutter/lib/desktop/pages/ad_banner.dart').read_text()
+          pubspec = Path('flutter/pubspec.yaml').read_text()
+          assert "import 'ad_banner.dart';" in home
+          assert "if (isWindows && !isOutgoingOnly) const AdminDeskAdBanner()," in home
+          assert home.index('buildPasswordBoard(context),') < home.index('const AdminDeskAdBanner()')
+          assert "ads.admin98.ir" in widget
+          assert "windows-home-sidebar" in widget
+          assert "https" in widget
+          assert 'http:' in pubspec
+          assert 'url_launcher:' in pubspec
+          print('AdminDesk ads patch smoke test passed for RustDesk 1.5.0')
+          PY
+
+      - name: Check patch is repeatable
+        working-directory: rustdesk
+        run: python3 ../rdgen/.github/patches/admindesk_ads.py
