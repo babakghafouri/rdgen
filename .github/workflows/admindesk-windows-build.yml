@@ -65,6 +65,7 @@ jobs:
           Push-Location rustdesk
           python ../admindesk/.github/patches/admindesk_ads.py
           Pop-Location
+          python admindesk/.github/patches/admindesk_skin.py --rustdesk-root rustdesk
 
       - name: Verify AdminDesk branding inputs
         shell: pwsh
