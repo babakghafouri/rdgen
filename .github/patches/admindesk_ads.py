@@ -28,7 +28,9 @@ class _AdminDeskAdBannerState extends State<AdminDeskAdBanner> {
 
   final http.Client _client = http.Client();
   Timer? _timer;
-  Map<String, dynamic>? _ad;
+  List<Map<String, dynamic>> _ads = [];
+  int _index = 0;
+  Timer? _rotation;
 
   @override
   void initState() {
@@ -62,7 +64,13 @@ class _AdminDeskAdBannerState extends State<AdminDeskAdBanner> {
         return;
       }
       if (!mounted) return;
-      setState(() => _ad = valid.first);
+      setState(() { _ads = valid.toList(); _index = 0; });
+      _rotation?.cancel();
+      if (_ads.length > 1) {
+        _rotation = Timer.periodic(const Duration(seconds: 5), (_) {
+          if (mounted) setState(() => _index = (_index + 1) % _ads.length);
+        });
+      }
       const seconds = 300;
       _timer?.cancel();
       _timer = Timer(Duration(seconds: seconds), _load);
@@ -72,13 +80,14 @@ class _AdminDeskAdBannerState extends State<AdminDeskAdBanner> {
   }
 
   void _hide() {
-    if (mounted && _ad != null) setState(() => _ad = null);
+    if (mounted) setState(() => _ads = []);
+    _rotation?.cancel();
     _timer?.cancel();
     _timer = Timer(const Duration(minutes: 5), _load);
   }
 
   Future<void> _open() async {
-    final value = _ad?['target_url'];
+    final value = _ads.isEmpty ? null : _ads[_index]['target_url'];
     if (!_httpsUrl(value)) return;
     await launchUrl(Uri.parse(value as String), mode: LaunchMode.externalApplication);
   }
@@ -86,33 +95,46 @@ class _AdminDeskAdBannerState extends State<AdminDeskAdBanner> {
   @override
   void dispose() {
     _timer?.cancel();
+    _rotation?.cancel();
     _client.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final ad = _ad;
-    if (ad == null) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: _httpsUrl(ad['target_url']) ? _open : null,
-            child: Image.network(
-              ad['image_url'] as String,
-              height: 90,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    if (_ads.isEmpty) return const SizedBox.shrink();
+    final ad = _ads[_index];
+    return LayoutBuilder(builder: (context, constraints) {
+      final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 280.0;
+      return Container(
+        constraints: const BoxConstraints(minHeight: 180, maxHeight: 520),
+        margin: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          SizedBox(
+            height: (width * 1.15).clamp(160.0, 460.0),
+            child: InkWell(
+              onTap: _httpsUrl(ad['target_url']) ? _open : null,
+              child: Image.network(ad['image_url'] as String,
+                fit: BoxFit.contain, width: double.infinity,
+                errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined))),
             ),
           ),
-        ),
-      ),
-    );
+          if (_ads.length > 1)
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              IconButton(onPressed: () => setState(() => _index = (_index - 1 + _ads.length) % _ads.length),
+                icon: const Icon(Icons.chevron_left)),
+              Text('${_index + 1} / ${_ads.length}'),
+              IconButton(onPressed: () => setState(() => _index = (_index + 1) % _ads.length),
+                icon: const Icon(Icons.chevron_right)),
+            ]),
+        ]),
+      );
+    });
   }
 }
 ''', encoding="utf-8")
