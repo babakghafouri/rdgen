@@ -156,5 +156,68 @@ new="""  bool adminDeskThemeDark = false;
 s=s[:start]+new+s[end:]
 if "import 'dart:ui';" not in s:
     s="import 'dart:ui';\n"+s
+
+# Customize the existing RustDesk sidebar without removing ID/password functionality.
+old_logo = """      Align(
+        alignment: Alignment.center,
+        child: loadLogo(),
+      ),
+      buildTip(context),"""
+new_logo = """      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 12, 20),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [
+                Color(0xFF1689E9), Color(0xFF0755AE)]),
+              borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.computer_rounded,
+                size: 22, color: Colors.white)),
+          const SizedBox(width: 10),
+          const Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('AdminDesk', style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w800,
+                  color: Color(0xFF17365B))),
+              Text('دسترسی به این دستگاه', style: TextStyle(
+                  fontSize: 11, color: Color(0xFF56799D))),
+            ])),
+        ]),
+      ),"""
+if old_logo not in s:
+    raise SystemExit('Left sidebar logo structure changed')
+s=s.replace(old_logo,new_logo,1)
+s=s.replace("width: isIncomingOnly ? 280.0 : 200.0,",
+            "width: isIncomingOnly ? 280.0 : 245.0,",1)
+s=s.replace("color: Theme.of(context).colorScheme.background,",
+            "decoration: const BoxDecoration(gradient: LinearGradient(\n"
+            "          begin: Alignment.topCenter, end: Alignment.bottomCenter,\n"
+            "          colors: [Color(0xFFF6FBFF), Color(0xFFE4F1FF)])),",1)
+# Preserve the native recent-peers data source and actions while modernizing cards.
+peer_file=a.rustdesk_root/'flutter/lib/common/widgets/peer_card.dart'
+peer=peer_file.read_text(encoding='utf-8')
+original="color: str2color('${peer.id}${peer.platform}', 0x7f),"
+if original not in peer:
+    raise SystemExit('Peer card background anchor not found')
+peer=peer.replace(original,
+    "decoration: const BoxDecoration(gradient: LinearGradient(\n"
+    "                      begin: Alignment.topLeft, end: Alignment.bottomRight,\n"
+    "                      colors: [Color(0xFF147DD0), Color(0xFF254C8D)])),",1)
+# All native peer status indicators, click actions, menus and real IDs stay intact.
+peer=peer.replace("final double _cardRadius = 16;",
+                  "final double _cardRadius = 20;",1)
+peer=peer.replace("final double _borderWidth = 2;",
+                  "final double _borderWidth = 1.5;",1)
+peer_file.write_text(peer,encoding='utf-8')
+
+# Translate the remote ID input label while retaining RustDesk connection behavior.
+conn_file=a.rustdesk_root/'flutter/lib/desktop/pages/connection_page.dart'
+conn=conn_file.read_text(encoding='utf-8')
+conn=conn.replace("translate('Control Remote Desktop')",
+                  "'اتصال به دستگاه دیگر'")
+conn_file.write_text(conn,encoding='utf-8')
+
 home.write_text(s,encoding='utf-8')
 print('AdminDesk visual shell applied')
