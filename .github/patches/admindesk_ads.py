@@ -24,11 +24,7 @@ class AdminDeskAdBanner extends StatefulWidget {
 }
 
 class _AdminDeskAdBannerState extends State<AdminDeskAdBanner> {
-  static final Uri _endpoint = Uri.https(
-    'ads.admin98.ir',
-    '/api/v1/ads',
-    {'placement': 'windows-home-sidebar'},
-  );
+  static final Uri _endpoint = Uri.parse('https://admin98.ir/api/ads/');
 
   final http.Client _client = http.Client();
   Timer? _timer;
@@ -54,17 +50,20 @@ class _AdminDeskAdBannerState extends State<AdminDeskAdBanner> {
         return;
       }
       final data = jsonDecode(response.body);
-      if (data is! Map<String, dynamic> ||
-          data['is_active'] != true ||
-          data['id'] is! String ||
-          !_httpsUrl(data['image_url'])) {
+      if (data is! Map<String, dynamic> || data['ads'] is! List) {
+        _hide();
+        return;
+      }
+      final ads = data['ads'] as List;
+      final valid = ads.whereType<Map<String, dynamic>>().where((ad) =>
+          _httpsUrl(ad['image_url']) && _httpsUrl(ad['target_url']));
+      if (valid.isEmpty) {
         _hide();
         return;
       }
       if (!mounted) return;
-      setState(() => _ad = data);
-      final raw = data['refresh_seconds'];
-      final seconds = raw is int ? raw.clamp(60, 3600).toInt() : 300;
+      setState(() => _ad = valid.first);
+      const seconds = 300;
       _timer?.cancel();
       _timer = Timer(Duration(seconds: seconds), _load);
     } catch (_) {
