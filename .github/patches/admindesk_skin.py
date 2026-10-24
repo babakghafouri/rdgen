@@ -14,79 +14,147 @@ if start<0 or end<0 or 'ConnectionPage()' not in s[start:end]:
 if 'adminDeskThemeDark' in s: raise SystemExit('Already patched')
 new="""  bool adminDeskThemeDark = false;
 
-  Widget _adminDeskCard(Widget child, Color surface, Color outline) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: outline)),
-      child: child,
+  Widget _adminDeskGlass(Widget child, bool dark) {
+    final border = dark ? const Color(0x665BA9F7) : const Color(0x99FFFFFF);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: dark ? const Color(0xCC172B49) : const Color(0xDDFBFDFF),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: border, width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1261B7).withOpacity(dark ? 0.16 : 0.09),
+                blurRadius: 24,
+                offset: const Offset(0, 9),
+              ),
+            ],
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 
   buildRightPane(BuildContext context) {
     final dark = adminDeskThemeDark;
-    final background = dark ? const Color(0xFF111827) : const Color(0xFFF4F7FB);
-    final surface = dark ? const Color(0xFF1F2937) : Colors.white;
-    final foreground = dark ? Colors.white : const Color(0xFF172B4D);
-    final outline = dark ? const Color(0xFF374151) : const Color(0xFFE1E8F2);
-    Widget caption(String value) => Text(value,
-      style: TextStyle(fontSize: 13, color: foreground.withOpacity(0.72)));
-    Widget infoTile(IconData icon, String title, Widget value) => Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: background,
-        borderRadius: BorderRadius.circular(12)),
-      child: Row(children: [
-        Icon(icon, color: const Color(0xFF237BEA)),
-        const SizedBox(width: 10),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-          children: [caption(title), const SizedBox(height: 4), value])),
-      ]),
-    );
-    return Container(color: background,
+    final foreground = dark ? const Color(0xFFF0F7FF) : const Color(0xFF17365B);
+    final muted = dark ? const Color(0xFFB5CAE3) : const Color(0xFF56799D);
+    final blue = dark ? const Color(0xFF66B6FF) : const Color(0xFF1879D9);
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: dark
+              ? [const Color(0xFF0B1830), const Color(0xFF12345C),
+                  const Color(0xFF0D2543)]
+              : [const Color(0xFFEAF6FF), const Color(0xFFD5E9FF),
+                  const Color(0xFFF5FAFF)],
+        ),
+      ),
       child: LayoutBuilder(builder: (context, bounds) {
         final compact = bounds.maxWidth < 760;
-        final ad = _adminDeskCard(Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('تبلیغات ویژه', style: TextStyle(fontSize: 17,
-              fontWeight: FontWeight.bold, color: foreground)),
-            const SizedBox(height: 8),
-            const AdminDeskAdBanner(),
-          ]), surface, outline);
-        final remote = _adminDeskCard(const ConnectionPage(), surface, outline);
-        return Column(children: [
-          Padding(padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-            child: Row(children: [
-              const Icon(Icons.desktop_windows, color: Color(0xFF237BEA), size: 28),
-              const SizedBox(width: 9),
+        final header = Padding(
+          padding: const EdgeInsets.fromLTRB(20, 15, 20, 12),
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [
+                  Color(0xFF1689E9), Color(0xFF0755AE)]),
+                borderRadius: BorderRadius.circular(13)),
+              child: const Icon(Icons.desktop_windows_rounded,
+                  color: Colors.white, size: 22)),
+            const SizedBox(width: 11),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('AdminDesk', style: TextStyle(fontSize: 23,
-                fontWeight: FontWeight.bold, color: foreground)),
-              const Spacer(),
-              IconButton(tooltip: dark ? 'حالت روشن' : 'حالت تیره',
-                icon: Icon(dark ? Icons.light_mode : Icons.dark_mode, color: foreground),
-                onPressed: () => setState(() => adminDeskThemeDark = !dark)),
-            ])),
+                  fontWeight: FontWeight.w800, color: foreground)),
+              Text('دسترسی سریع و امن', style: TextStyle(
+                  fontSize: 11, color: muted)),
+            ]),
+            const Spacer(),
+            IconButton(
+              tooltip: dark ? 'حالت روشن' : 'حالت تیره',
+              icon: Icon(dark ? Icons.light_mode_rounded
+                  : Icons.dark_mode_rounded, color: foreground),
+              onPressed: () => setState(() => adminDeskThemeDark = !dark)),
+          ]),
+        );
+        final sessions = _adminDeskGlass(
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+              child: Row(children: [
+                Icon(Icons.history_rounded, color: blue, size: 24),
+                const SizedBox(width: 9),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('اتصال‌های اخیر', style: TextStyle(
+                        fontSize: 19, fontWeight: FontWeight.bold,
+                        color: foreground)),
+                    Text('Recent Sessions', style: TextStyle(
+                        fontSize: 12, color: muted)),
+                  ])),
+              ]),
+            ),
+            const SizedBox(height: 6),
+            // ConnectionPage contains the real PeerTabPage history,
+            // search and connection actions. Never replace it with mock data.
+            const Expanded(child: ConnectionPage()),
+          ]),
+          dark,
+        );
+        final ads = _adminDeskGlass(
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(17, 17, 17, 10),
+              child: Row(children: [
+                Icon(Icons.campaign_rounded, color: blue),
+                const SizedBox(width: 8),
+                Expanded(child: Text('تبلیغات ویژه',
+                    style: TextStyle(fontSize: 18,
+                        fontWeight: FontWeight.bold, color: foreground))),
+              ]),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: AdminDeskAdBanner(),
+            ),
+            const SizedBox(height: 12),
+          ]),
+          dark,
+        );
+        return Column(children: [
+          header,
           Expanded(child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+            padding: const EdgeInsets.fromLTRB(14, 2, 14, 14),
             child: compact
-              ? Column(children: [
-                  Expanded(child: remote),
-                  const SizedBox(height: 10),
-                  SizedBox(height: 210, child: SingleChildScrollView(child: ad)),
-
-                ])
-              : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Expanded(flex: 5, child: remote),
-                  const SizedBox(width: 12),
-                  Expanded(flex: 3, child: SingleChildScrollView(
-                    child: ad)),
-                ]),
+                ? Column(children: [
+                    Expanded(flex: 5, child: sessions),
+                    const SizedBox(height: 12),
+                    Expanded(flex: 3, child: SingleChildScrollView(
+                        child: ads)),
+                  ])
+                : Row(crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(flex: 5, child: sessions),
+                      const SizedBox(width: 14),
+                      Expanded(flex: 3, child: SingleChildScrollView(
+                          child: ads)),
+                    ]),
           )),
         ]);
-      }));
+      }),
+    );
   }
 """
 s=s[:start]+new+s[end:]
+if "import 'dart:ui';" not in s:
+    s="import 'dart:ui';\n"+s
 home.write_text(s,encoding='utf-8')
 print('AdminDesk visual shell applied')
