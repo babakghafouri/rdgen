@@ -1,4 +1,5 @@
 name: AdminDesk Independent Windows Build
+# Trigger a fresh build after re-enabling this workflow
 
 on:
   workflow_dispatch:
