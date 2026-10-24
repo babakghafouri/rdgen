@@ -201,10 +201,7 @@ peer=peer_file.read_text(encoding='utf-8')
 original="color: str2color('${peer.id}${peer.platform}', 0x7f),"
 if original not in peer:
     raise SystemExit('Peer card background anchor not found')
-peer=peer.replace(original,
-    "decoration: const BoxDecoration(gradient: LinearGradient(\n"
-    "                      begin: Alignment.topLeft, end: Alignment.bottomRight,\n"
-    "                      colors: [Color(0xFF147DD0), Color(0xFF254C8D)])),",1)
+peer=peer.replace(original, "color: const Color(0xFF2879B8),")
 # All native peer status indicators, click actions, menus and real IDs stay intact.
 peer=peer.replace("final double _cardRadius = 16;",
                   "final double _cardRadius = 20;",1)
