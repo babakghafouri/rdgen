@@ -147,15 +147,48 @@ if imp not in text:
     lines.insert(last_import + 1, imp)
     text = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
-widget = "if (isWindows && !isOutgoingOnly) const AdminDeskAdBanner(),"
-if widget not in text:
-    needle = "buildPasswordBoard(context),"
-    pos = text.find(needle)
-    if pos < 0:
-        raise SystemExit("Could not find password board insertion point")
-    end = pos + len(needle)
-    indent = text[text.rfind("\n", 0, pos) + 1:pos]
-    text = text[:end] + "\n" + indent + widget + text[end:]
+# Put the advertising area in the right-hand workspace, never the left sidebar.
+# RustDesk 1.5.0 has a buildRightPane() that returns ConnectionPage().
+old_right = """  buildRightPane(BuildContext context) {
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: ConnectionPage(),
+    );
+  }"""
+new_right = """  buildRightPane(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final compact = constraints.maxWidth < 680;
+      final connection = const ConnectionPage();
+      final ad = const AdminDeskAdBanner();
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Theme.of(context).scaffoldBackgroundColor,
+              Theme.of(context).colorScheme.primary.withOpacity(0.055),
+            ],
+          ),
+        ),
+        child: compact
+            ? Column(children: [
+                Expanded(child: connection),
+                if (isWindows && !bind.isOutgoingOnly())
+                  SizedBox(height: 230, child: ad),
+              ])
+            : Row(children: [
+                Expanded(child: connection),
+                if (isWindows && !bind.isOutgoingOnly())
+                  SizedBox(width: (constraints.maxWidth * 0.35).clamp(210.0, 340.0),
+                    child: Center(child: ad)),
+              ]),
+      );
+    });
+  }"""
+if old_right not in text:
+    raise SystemExit("Expected RustDesk 1.5.0 right pane not found; refusing incorrect layout patch")
+text = text.replace(old_right, new_right, 1)
 
 home.write_text(text, encoding="utf-8")
 
