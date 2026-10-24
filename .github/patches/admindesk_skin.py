@@ -54,26 +54,6 @@ new="""  bool adminDeskThemeDark = false;
             const SizedBox(height: 8),
             const AdminDeskAdBanner(),
           ]), surface, outline);
-        final device = _adminDeskCard(Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('اطلاعات دستگاه', style: TextStyle(fontSize: 18,
-              fontWeight: FontWeight.bold, color: foreground)),
-            const SizedBox(height: 12),
-            infoTile(Icons.computer, 'نام دستگاه',
-              Text(Platform.localHostname, style: TextStyle(color: foreground))),
-            const SizedBox(height: 8),
-            infoTile(Icons.fingerprint, 'شناسه',
-              TextField(controller: gFFI.serverModel.serverId, readOnly: true,
-                style: TextStyle(color: foreground),
-                decoration: const InputDecoration(isDense: true, border: InputBorder.none))),
-            const SizedBox(height: 8),
-            infoTile(Icons.circle_outlined, 'وضعیت',
-              caption('وضعیت اتصال از بخش اصلی برنامه قابل مشاهده است')),
-            const SizedBox(height: 8),
-            infoTile(Icons.history, 'آخرین اتصال',
-              caption('از تاریخچه اتصال‌ها')),
-          ]), surface, outline);
         final remote = _adminDeskCard(const ConnectionPage(), surface, outline);
         return Column(children: [
           Padding(padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
@@ -93,16 +73,14 @@ new="""  bool adminDeskThemeDark = false;
               ? Column(children: [
                   Expanded(child: remote),
                   const SizedBox(height: 10),
-                  SizedBox(height: 210, child: SingleChildScrollView(child: device)),
-                  const SizedBox(height: 10),
-                  SizedBox(height: 190, child: SingleChildScrollView(child: ad)),
+                  SizedBox(height: 210, child: SingleChildScrollView(child: ad)),
+
                 ])
               : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Expanded(flex: 5, child: remote),
                   const SizedBox(width: 12),
                   Expanded(flex: 3, child: SingleChildScrollView(
-                    child: Column(children: [device,
-                      const SizedBox(height: 12), ad]))),
+                    child: ad)),
                 ]),
           )),
         ]);
