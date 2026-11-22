@@ -130,20 +130,30 @@ jobs:
         run: |
           echo "STATUS_URL=${{ env.apiServer }}/api/updategh" >> $env:GITHUB_ENV
 
-      - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
+      # Pilot only: build from the reviewed AdminDesk snapshot, not upstream RustDesk.
+      # The bridge and third-party prerequisites still use RustDesk core 1.5.1.
+      - name: Verify AdminDesk pilot input
+        shell: bash
+        run: |
+          if [ "${{ inputs.version }}" != "1.5.1" ]; then
+            echo "::error::AdminDesk pilot requires RustDesk core version 1.5.1."
+            exit 1
+          fi
+
+      - name: Checkout pinned AdminDesk 1.5.2 source (pilot)
         uses: actions/checkout@v7
         with:
-          repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
+          repository: babakghafouri/Admindesk
+          ref: 4bbb91323272d39cb8c36cac54718848e4becf0a
           submodules: recursive
 
-      - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
-        uses: actions/checkout@v7
-        with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
+      - name: Verify expected AdminDesk UI sources
+        shell: bash
+        run: |
+          test -f flutter/lib/desktop/widgets/admindesk_dashboard.dart
+          test -f flutter/lib/desktop/widgets/promo_carousel.dart
+          test -f flutter/pubspec.yaml
+          grep -q 'version: 1.5.2+69' flutter/pubspec.yaml
 
       - name: Set custom app version
         continue-on-error: true
