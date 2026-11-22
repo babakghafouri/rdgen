@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/admindesk-rdgen-full-pilot.yml'
       - '.github/workflows/generator-windows.yml'
+      - '.github/workflows/bridge.yml'
       - '.github/workflows/fetch-encrypted-secrets.yml'
       - '.github/workflows/third-party-RustDeskTempTopMostWindow.yml'
   workflow_dispatch:
