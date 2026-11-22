@@ -76,6 +76,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ inputs.version }}
+      pilot: ${{ inputs.pilot }}
 
   build-RustDeskTempTopMostWindow:
     needs: setup
