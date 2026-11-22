@@ -38,6 +38,38 @@ A dedicated workflow now allows testing the **real RDGen Windows packaging pipel
 
 This pilot is intentionally limited to Windows x64. **No GitHub Release is published.** A successful pipeline run establishes compile/package compatibility only; manual installation, remote-control testing and independently authorized code signing still remain necessary.
 
+## Authorized code-signing with the same API protocol as RDGen
+
+**Not currently signed.** The verified Windows x64 pilot compiles and packages both EXE and MSI, but those artifacts are deliberately unsigned unless an **authorized** signing server is configured.
+
+The pilot can now POST a ZIP of compiled binaries to an RDGen-compatible signing server at `https://<authorized-server>/sign/`, unpack the signed files safely, verify each Authenticode signature on Windows, and only then replace the originals. It signs the inner EXE/DLL files first and the final installer EXE/MSI files second. The workflow fails if the service is missing, rejects a request, returns unexpected filenames, or signs as the wrong publisher. It never silently falls back to unsigned files when signing was requested.
+
+### What must be connected first
+
+The signing service must be operated by the owner of a trusted code-signing certificate, or by a provider who has **expressly agreed** to sign AdminDesk. Forking RDGen **does not** grant access to Bayside Computer Systems Inc's private key, USB token, service or GitHub secrets. Do not attempt to copy or impersonate their certificate.
+
+In `babakghafouri/rdgen` open **Settings → Secrets and variables → Actions** and configure:
+
+| Type | Name | Required value |
+| --- | --- | --- |
+| Repository secret | `SIGN_BASE_URL` | HTTPS base URL of your **authorized** RDGen-compatible Signing API, without `/sign/` |
+| Repository secret | `SIGN_API_KEY` | Issued API authentication key, **not** a Windows/RustDesk server public key |
+| Repository variable | `ADMINDESK_SIGN_EXPECTED_PUBLISHER` | Publisher name that should appear in the Authenticode certificate subject, e.g. your legal company name |
+
+Do **not** put any of these secrets in a GitHub issue, commit, pull request or chat. The existing `SIGN_API_KEY` must belong to the authorized signing service; the RustDesk server connection key is unrelated to code signing.
+
+### To request a signed Windows pilot
+
+1. Open **Actions → AdminDesk RDGen isolated Windows full-build pilot → Run workflow**.
+2. Choose `experiment/admindesk-152-windows-generator` (not `master`).
+3. Set `pilot_sign` to **true**.
+4. The build signs the inner EXE/DLL and final EXE/MSI using `SIGN_BASE_URL` and `SIGN_API_KEY`, verifies signatures and publisher, then uploads `AdminDesk-RDGen-signed-pilot-<run-number>` as an Actions artifact.
+5. Review the signed EXE/MSI with Windows **Properties → Digital Signatures** and independently run `Get-AuthenticodeSignature`. Test that Windows accepts the chain and timestamp.
+
+If `pilot_sign` is false or omitted, builds stay **unsigned**, with artifact name `AdminDesk-RDGen-unsigned-pilot-<run-number>`. A signed pilot is not a production release. No external generator upload or release publication occurs in either mode.
+
+**Current limitation:** We cannot produce a real certificate signature from the public fork or the screenshots alone. It requires an actual authorized signing API (or another approved signing provider) and its corresponding credentials. The earlier successfully signed original RDGen example used a certificate issued to *Bayside Computer Systems Inc*; it cannot legally or technically be assumed available to AdminDesk.
+
 ## Production generator setup (later)
 
 ## How to run the full web-generator path later
