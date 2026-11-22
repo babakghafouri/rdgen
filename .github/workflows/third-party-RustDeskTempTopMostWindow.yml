@@ -3,6 +3,9 @@ name: build RustDeskTempTopMostWindow
 on:
   workflow_call:
     inputs:
+        pilot:
+            type: boolean
+            default: false
         rustdesk-version:
             description: 'RustDesk version, used to select a compatible privacy DLL'
             type: string
@@ -55,10 +58,10 @@ jobs:
       - name: Load Secrets
         uses: ./.github/actions/decrypt-secrets
         with:
-          zip_password: ${{ secrets.ZIP_PASSWORD }}
+          zip_password: ${{ inputs.pilot && 'admindesk-public-pilot-only' || secrets.ZIP_PASSWORD }}
 
       - name: Finalize and Cleanup zip/json
-        if: always() # Run even if previous steps fail
+        if: ${{ always() && !inputs.pilot }}
         continue-on-error: true
         uses: fjogeleit/http-request-action@v2
         with:
