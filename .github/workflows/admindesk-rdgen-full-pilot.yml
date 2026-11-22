@@ -10,6 +10,7 @@ on:
       - '.github/workflows/bridge.yml'
       - '.github/workflows/fetch-encrypted-secrets.yml'
       - '.github/workflows/third-party-RustDeskTempTopMostWindow.yml'
+      - 'docs/ADMINDESK_SIGN_REQUEST.md'
   workflow_dispatch:
     inputs:
       pilot_sign:
@@ -31,5 +32,5 @@ jobs:
       app_version: ''
       zip_url: ''
       pilot: true
-      pilot_sign: ${{ inputs.pilot_sign || false }}
+      pilot_sign: ${{ inputs.pilot_sign || (github.event_name == 'push' && github.event.head_commit.message == '[sign AdminDesk pilot]' && vars.ADMINDESK_ENABLE_PILOT_SIGNING == 'true') }}
     secrets: inherit

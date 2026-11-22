@@ -31,8 +31,8 @@ A dedicated workflow now allows testing the **real RDGen Windows packaging pipel
 - Trigger: a push to this exact experimental branch changing the pilot workflow/its dependencies, or manual dispatch.
 - Core input: RustDesk `1.5.1`; source remains pinned to AdminDesk `4bbb91323272d39cb8c36cac54718848e4becf0a`.
 - Synthetic, public JSON configuration is generated locally and encrypted using a fixed **public test-only password**. It contains no private key, account, remote desktop credential or personally identifiable information.
-- The pilot skips Signing API calls, external generator callbacks and release publication regardless of configured repository secrets.
-- On success only, it uploads `AdminDeskPilot.exe` and `AdminDeskPilot.msi` as temporary **UNSIGNED test artifacts** associated with that workflow run.
+- Signing is OFF by default. An authorized opt-in signing request uses a configured remote Signing API. External generator callbacks and GitHub Release publication are always disabled in the pilot.
+- On success it uploads `AdminDeskPilot.exe` and `AdminDeskPilot.msi` as short-lived pilot artifacts; the default is **UNSIGNED**. With authorized signing enabled, both must pass Authenticode verification before upload.
 - The workflow fails if either installer file is missing, and logs SHA-256 and Authenticode status without suggesting unsigned files are trusted.
 - The normal RDGen web-generated mode is unchanged by these pilot-specific branches.
 
@@ -60,11 +60,18 @@ Do **not** put any of these secrets in a GitHub issue, commit, pull request or c
 
 ### To request a signed Windows pilot
 
-1. Open **Actions → AdminDesk RDGen isolated Windows full-build pilot → Run workflow**.
-2. Choose `experiment/admindesk-152-windows-generator` (not `master`).
-3. Set `pilot_sign` to **true**.
-4. The build signs the inner EXE/DLL and final EXE/MSI using `SIGN_BASE_URL` and `SIGN_API_KEY`, verifies signatures and publisher, then uploads `AdminDesk-RDGen-signed-pilot-<run-number>` as an Actions artifact.
-5. Review the signed EXE/MSI with Windows **Properties → Digital Signatures** and independently run `Get-AuthenticodeSignature`. Test that Windows accepts the chain and timestamp.
+GitHub's **Run workflow** UI requires the workflow to exist on the repository's default branch. We intentionally keep this experiment off `master`, so use the push-based opt-in below instead:
+
+1. First configure the two signing secrets and publisher variable listed above, using an authorized Signing API.
+2. Add repository **variable** `ADMINDESK_ENABLE_PILOT_SIGNING` with value `true` (not a secret).
+3. Open `docs/ADMINDESK_SIGN_REQUEST.md` in the branch `experiment/admindesk-152-windows-generator`.
+4. Edit its request marker (e.g. increment the request number). Use GitHub's **Commit changes** and set the exact commit message to **`[sign AdminDesk pilot]`**. Commit directly to the experimental branch.
+5. This explicitly triggers the existing push workflow with `pilot_sign=true`. The build signs inner EXE/DLL and final EXE/MSI, checks Authenticode and publisher, then uploads `AdminDesk-RDGen-signed-pilot-<run-number>` as a short-lived artifact.
+6. Verify **Properties → Digital Signatures** and `Get-AuthenticodeSignature` on Windows, then reset `ADMINDESK_ENABLE_PILOT_SIGNING` to `false` to prevent unintended future signing requests.
+
+The signed path requires BOTH the variable and the exact commit message. Regular pushes and test runs stay unsigned. If the signing secrets or publisher are missing, an explicitly requested signed build fails rather than publishing an unsigned file as signed.
+
+If this workflow is later added to `master` as a separate approved launcher, manual **Run workflow** may be used with `pilot_sign=true` and the experimental branch selected.
 
 If `pilot_sign` is false or omitted, builds stay **unsigned**, with artifact name `AdminDesk-RDGen-unsigned-pilot-<run-number>`. A signed pilot is not a production release. No external generator upload or release publication occurs in either mode.
 
