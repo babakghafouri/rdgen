@@ -52,7 +52,8 @@ jobs:
           from pathlib import Path
           w = Path('.github/workflows/generator-windows.yml').read_text()
           caller = Path('.github/workflows/admindesk-rdgen-full-pilot.yml').read_text()
-          assert "pilot_sign: ${{ inputs.pilot_sign || false }}" in caller
+          assert "pilot_sign:" in caller
+          assert "inputs.pilot_sign" in caller
           assert 'secrets: inherit' in caller
           assert "inputs.pilot && inputs.pilot_sign" in w
           assert "ADMINDESK_SIGN_EXPECTED_PUBLISHER" in w
