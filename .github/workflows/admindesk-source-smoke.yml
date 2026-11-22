@@ -45,3 +45,39 @@ jobs:
           grep -q '^version: 1.5.2+69' admindesk-source/flutter/pubspec.yaml
           test "$(git -C admindesk-source rev-parse HEAD)" = "4bbb91323272d39cb8c36cac54718848e4becf0a"
           echo 'AdminDesk source/version contract OK. Full Windows compilation NOT performed.'
+
+  windows-flutter-compatibility:
+    name: AdminDesk 1.5.2 Flutter analysis on Windows
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - name: Check out pinned AdminDesk source
+        uses: actions/checkout@v4
+        with:
+          repository: babakghafouri/Admindesk
+          ref: 4bbb91323272d39cb8c36cac54718848e4becf0a
+          persist-credentials: false
+      - name: Install Flutter 3.24.5 (matching AdminDesk build)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.24.5'
+          cache: true
+      - name: Resolve dependencies
+        working-directory: flutter
+        run: flutter pub get
+      - name: Analyze AdminDesk custom Windows UI
+        working-directory: flutter
+        run: >-
+          flutter analyze --no-pub --no-fatal-infos
+          lib/common/widgets/peer_card.dart
+          lib/common/widgets/peer_tab_page.dart
+          lib/common/widgets/peers_view.dart
+          lib/desktop/pages/connection_page.dart
+          lib/desktop/pages/desktop_setting_page.dart
+          lib/desktop/widgets/admindesk_credentials.dart
+          lib/desktop/widgets/admindesk_dashboard.dart
+          lib/desktop/widgets/admindesk_titlebar.dart
+          lib/desktop/widgets/devices_table.dart
+          lib/desktop/widgets/tabbar_widget.dart
+          lib/desktop/widgets/promo_carousel.dart
