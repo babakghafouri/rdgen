@@ -15,6 +15,9 @@ on:
       pilot:
         type: boolean
         default: false
+      pilot_sign:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       version:
@@ -33,7 +36,12 @@ on:
         default: ''
         type: string
       pilot:
-        description: 'No-secret test: never sign, upload to external services or publish a release'
+        description: 'Experimental Windows build. No external generator upload or GitHub Release.'
+        required: false
+        type: boolean
+        default: false
+      pilot_sign:
+        description: 'Use authorized remote Signing API for pilot only; requires configured secrets and expected publisher'
         required: false
         type: boolean
         default: false
@@ -115,7 +123,13 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
-        
+
+      - name: Save RDGen signing helper before AdminDesk source checkout
+        if: ${{ inputs.pilot && inputs.pilot_sign }}
+        shell: pwsh
+        run: |
+          Copy-Item -LiteralPath ".github/scripts/admindesk-remote-sign-pilot.ps1" -Destination "$env:RUNNER_TEMP/admindesk-remote-sign-pilot.ps1" -Force
+
       - uses: actions/download-artifact@v8
         with:
           name: encrypted-secrets-zip
@@ -134,6 +148,27 @@ jobs:
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json"}'
           data: '{"uuid": "${{ env.uuid }}"}'
+
+      - name: Preflight authorized pilot signing
+        if: ${{ inputs.pilot_sign }}
+        shell: pwsh
+        env:
+          PILOT_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL }}
+          PILOT_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY }}
+          PILOT_SIGN_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER }}
+        run: |
+          if ("${{ inputs.pilot }}" -ne "true") {
+            throw 'pilot_sign requires pilot=true; non-pilot signing follows the original RDGen flow.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:PILOT_SIGN_BASE_URL) -or
+              [string]::IsNullOrWhiteSpace($env:PILOT_SIGN_API_KEY) -or
+              [string]::IsNullOrWhiteSpace($env:PILOT_SIGN_EXPECTED_PUBLISHER)) {
+            throw 'Missing authorized signing settings: SIGN_BASE_URL, SIGN_API_KEY, or ADMINDESK_SIGN_EXPECTED_PUBLISHER.'
+          }
+          if (-not $env:PILOT_SIGN_BASE_URL.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Remote signing requires an HTTPS endpoint.'
+          }
+          Write-Host 'Authorized signer configuration found; signing will be verified before artifact upload.'
 
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v9
@@ -706,6 +741,16 @@ jobs:
           name: topmostwindow-artifacts
           path: "./rustdesk"
       
+      - name: Sign pilot inner EXE/DLL via authorized API
+        if: ${{ inputs.pilot && inputs.pilot_sign }}
+        shell: pwsh
+        env:
+          PILOT_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL }}
+          PILOT_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY }}
+          PILOT_SIGN_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER }}
+        run: |
+          & "$env:RUNNER_TEMP/admindesk-remote-sign-pilot.ps1" -Stage InnerBinaries -Path "./rustdesk"
+
       - name: zip dlls
         if: ${{ !inputs.pilot }}
         continue-on-error: true
@@ -782,6 +827,16 @@ jobs:
           cp ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk-latest.msi
           mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
           sha256sum ../../SignOutput/rustdesk.msi
+
+      - name: Sign pilot EXE/MSI installers via authorized API
+        if: ${{ inputs.pilot && inputs.pilot_sign }}
+        shell: pwsh
+        env:
+          PILOT_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL }}
+          PILOT_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY }}
+          PILOT_SIGN_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER }}
+        run: |
+          & "$env:RUNNER_TEMP/admindesk-remote-sign-pilot.ps1" -Stage Installers -Path "./SignOutput"
 
       - name: zip exe and msi
         if: ${{ !inputs.pilot }}
@@ -864,12 +919,15 @@ jobs:
             Write-Host "$name SHA256 $hash"
             $signature = Get-AuthenticodeSignature -LiteralPath $p
             Write-Host "$name Authenticode: $($signature.Status)"
+            if ("${{ inputs.pilot_sign }}" -eq "true" -and $signature.Status -ne "Valid") {
+              throw "Expected signed pilot installer but received $($signature.Status): $name"
+            }
           }
-      - name: Upload unsigned pilot installers (not a release)
+      - name: Upload pilot installers as short-lived artifacts (not a release)
         if: ${{ inputs.pilot }}
         uses: actions/upload-artifact@v7
         with:
-          name: AdminDesk-RDGen-unsigned-pilot-${{ github.run_number }}
+          name: AdminDesk-RDGen-${{ inputs.pilot_sign && 'signed' || 'unsigned' }}-pilot-${{ github.run_number }}
           path: |
             SignOutput/AdminDeskPilot.exe
             SignOutput/AdminDeskPilot.msi
