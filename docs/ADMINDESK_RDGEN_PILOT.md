@@ -23,7 +23,24 @@ The generator Windows workflow now checks out the pinned AdminDesk source commit
 
 **This does not mean the RDGen patches will succeed with AdminDesk.** Some patches are designed for unmodified upstream RustDesk source and may overwrite custom paths, generate inaccurate branding, or silently skip failures due to `continue-on-error`. A passing source-contract test does NOT mean the Windows EXE/MSI compiles.
 
-## How to run the pilot
+## Automated no-secret full Windows pilot
+
+A dedicated workflow now allows testing the **real RDGen Windows packaging pipeline** without deploying the Django generator and without configuring any GitHub secrets:
+
+- Workflow: `.github/workflows/admindesk-rdgen-full-pilot.yml`
+- Trigger: a push to this exact experimental branch changing the pilot workflow/its dependencies, or manual dispatch.
+- Core input: RustDesk `1.5.1`; source remains pinned to AdminDesk `4bbb91323272d39cb8c36cac54718848e4becf0a`.
+- Synthetic, public JSON configuration is generated locally and encrypted using a fixed **public test-only password**. It contains no private key, account, remote desktop credential or personally identifiable information.
+- The pilot skips Signing API calls, external generator callbacks and release publication regardless of configured repository secrets.
+- On success only, it uploads `AdminDeskPilot.exe` and `AdminDeskPilot.msi` as temporary **UNSIGNED test artifacts** associated with that workflow run.
+- The workflow fails if either installer file is missing, and logs SHA-256 and Authenticode status without suggesting unsigned files are trusted.
+- The normal RDGen web-generated mode is unchanged by these pilot-specific branches.
+
+This pilot is intentionally limited to Windows x64. **No GitHub Release is published.** A successful pipeline run establishes compile/package compatibility only; manual installation, remote-control testing and independently authorized code signing still remain necessary.
+
+## Production generator setup (later)
+
+## How to run the full web-generator path later
 
 1. Review the experiment PR and source smoke test.
 2. Configure a **separate** instance of the RDGen Django service to reference this repo/experimental branch; do not change `rdgen.crayoneater.org` or the production AdminDesk distribution.
