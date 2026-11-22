@@ -1,0 +1,47 @@
+name: AdminDesk source compatibility smoke test
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/generator-windows.yml'
+      - '.github/workflows/admindesk-source-smoke.yml'
+      - 'docs/ADMINDESK_RDGEN_PILOT.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out generator experiment
+        uses: actions/checkout@v4
+      - name: Confirm pilot is isolated and source pinned
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('.github/workflows/generator-windows.yml').read_text()
+          expected = '4bbb91323272d39cb8c36cac54718848e4becf0a'
+          assert 'repository: babakghafouri/Admindesk' in s
+          assert f'ref: {expected}' in s
+          assert 'AdminDesk pilot requires RustDesk core version 1.5.1' in s
+          assert 'sign dlls' in s and 'sign exe and msi' in s
+          print('Generator source contract OK. Signing has NOT been tested.')
+          PY
+      - name: Check out pinned AdminDesk source
+        uses: actions/checkout@v4
+        with:
+          repository: babakghafouri/Admindesk
+          ref: 4bbb91323272d39cb8c36cac54718848e4becf0a
+          path: admindesk-source
+          submodules: false
+      - name: Verify AdminDesk UI and release version exist
+        shell: bash
+        run: |
+          test -f admindesk-source/flutter/lib/desktop/widgets/admindesk_dashboard.dart
+          test -f admindesk-source/flutter/lib/desktop/widgets/promo_carousel.dart
+          test -f admindesk-source/flutter/lib/desktop/widgets/admindesk_titlebar.dart
+          grep -q '^version: 1.5.2+69' admindesk-source/flutter/pubspec.yaml
+          test "$(git -C admindesk-source rev-parse HEAD)" = "4bbb91323272d39cb8c36cac54718848e4becf0a"
+          echo 'AdminDesk source/version contract OK. Full Windows compilation NOT performed.'
