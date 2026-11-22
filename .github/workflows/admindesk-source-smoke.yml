@@ -5,6 +5,8 @@ on:
       - '.github/workflows/generator-windows.yml'
       - '.github/workflows/admindesk-source-smoke.yml'
       - 'docs/ADMINDESK_RDGEN_PILOT.md'
+      - '.github/workflows/admindesk-rdgen-full-pilot.yml'
+      - '.github/scripts/admindesk-remote-sign-pilot.ps1'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +30,34 @@ jobs:
           assert 'AdminDesk pilot requires RustDesk core version 1.5.1' in s
           assert 'sign dlls' in s and 'sign exe and msi' in s
           print('Generator source contract OK. Signing has NOT been tested.')
+          PY
+      - name: Validate remote signing helper PowerShell syntax
+        shell: pwsh
+        run: |
+          $path = '.github/scripts/admindesk-remote-sign-pilot.ps1'
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path $path).Path, [ref]$tokens, [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw 'PowerShell signing helper has syntax errors.'
+          }
+          Write-Host 'Signing helper PowerShell parser: PASS (no real certificate used).'
+      - name: Assert signing mode is explicitly opt-in
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          w = Path('.github/workflows/generator-windows.yml').read_text()
+          caller = Path('.github/workflows/admindesk-rdgen-full-pilot.yml').read_text()
+          assert "pilot_sign: ${{ inputs.pilot_sign || false }}" in caller
+          assert 'secrets: inherit' in caller
+          assert "inputs.pilot && inputs.pilot_sign" in w
+          assert "ADMINDESK_SIGN_EXPECTED_PUBLISHER" in w
+          assert "Upload pilot installers as short-lived artifacts" in w
+          print('Explicit authorized signing opt-in contract: PASS')
           PY
       - name: Check out pinned AdminDesk source
         uses: actions/checkout@v4
