@@ -1,0 +1,26 @@
+name: AdminDesk RDGen isolated Windows full-build pilot
+
+on:
+  push:
+    branches:
+      - experiment/admindesk-152-windows-generator
+    paths:
+      - '.github/workflows/admindesk-rdgen-full-pilot.yml'
+      - '.github/workflows/generator-windows.yml'
+      - '.github/workflows/fetch-encrypted-secrets.yml'
+      - '.github/workflows/third-party-RustDeskTempTopMostWindow.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-windows-build:
+    # Synthetic settings; no user keys or external Django generator required.
+    # This also suppresses all signing and external upload in the reusable job.
+    uses: ./.github/workflows/generator-windows.yml
+    with:
+      version: '1.5.1'
+      app_version: ''
+      zip_url: ''
+      pilot: true
