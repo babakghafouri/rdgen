@@ -3,7 +3,7 @@
 **This file is not a certificate and does not contain secrets.**
 
 Request number: 0
-Self-sign request number: 0
+Self-sign request number: 1
 
 To request a signed test build, first have an *authorized* Signing API configured
 in GitHub repository secrets (SIGN_BASE_URL and SIGN_API_KEY), set repository
