@@ -1,6 +1,26 @@
 name: Custom Windows Client Generator
 run-name: Custom Windows Client Generator
-on: 
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      zip_url:
+        type: string
+        required: false
+      app_version:
+        type: string
+        required: false
+      pilot:
+        type: boolean
+        default: false
+      pilot_sign:
+        type: boolean
+        default: false
+      pilot_self_sign:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       version:
@@ -18,6 +38,21 @@ on:
         required: false
         default: ''
         type: string
+      pilot:
+        description: 'Experimental Windows build. No external generator upload or GitHub Release.'
+        required: false
+        type: boolean
+        default: false
+      pilot_sign:
+        description: 'Use authorized remote Signing API for pilot only; requires configured secrets and expected publisher'
+        required: false
+        type: boolean
+        default: false
+      pilot_self_sign:
+        description: 'Use the AdminDesk self-signed certificate for an isolated test only; does not establish public trust'
+        required: false
+        type: boolean
+        default: false
 
 
 env:
@@ -51,17 +86,20 @@ jobs:
     uses: ./.github/workflows/fetch-encrypted-secrets.yml
     with:
       zip_url_json: ${{ inputs.zip_url }}
+      pilot: ${{ inputs.pilot }}
 
   generate-bridge:
     uses: ./.github/workflows/bridge.yml
     with:
       version: ${{ inputs.version }}
+      pilot: ${{ inputs.pilot }}
 
   build-RustDeskTempTopMostWindow:
     needs: setup
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
       rustdesk-version: ${{ inputs.version }}
+      pilot: ${{ inputs.pilot }}
       upload-artifact: true
       target: windows-2022
       configuration: Release
@@ -93,7 +131,18 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
-        
+
+      - name: Save RDGen signing helpers before AdminDesk source checkout
+        if: ${{ inputs.pilot && (inputs.pilot_sign || inputs.pilot_self_sign) }}
+        shell: pwsh
+        run: |
+          if ("${{ inputs.pilot_sign }}" -eq "true") {
+            Copy-Item -LiteralPath ".github/scripts/admindesk-remote-sign-pilot.ps1" -Destination "$env:RUNNER_TEMP/admindesk-remote-sign-pilot.ps1" -Force
+          }
+          if ("${{ inputs.pilot_self_sign }}" -eq "true") {
+            Copy-Item -LiteralPath ".github/scripts/admindesk-self-sign-pilot.ps1" -Destination "$env:RUNNER_TEMP/admindesk-self-sign-pilot.ps1" -Force
+          }
+
       - uses: actions/download-artifact@v8
         with:
           name: encrypted-secrets-zip
@@ -101,10 +150,10 @@ jobs:
       - name: Load Secrets
         uses: ./.github/actions/decrypt-secrets
         with:
-          zip_password: ${{ secrets.ZIP_PASSWORD }}
+          zip_password: ${{ inputs.pilot && 'admindesk-public-pilot-only' || secrets.ZIP_PASSWORD }}
 
       - name: Finalize and Cleanup zip/json
-        if: always() # Run even if previous steps fail
+        if: ${{ always() && !inputs.pilot }}
         continue-on-error: true
         uses: fjogeleit/http-request-action@v2
         with:
@@ -112,6 +161,51 @@ jobs:
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json"}'
           data: '{"uuid": "${{ env.uuid }}"}'
+
+      - name: Preflight authorized pilot signing
+        if: ${{ inputs.pilot_sign }}
+        shell: pwsh
+        env:
+          PILOT_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL }}
+          PILOT_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY }}
+          PILOT_SIGN_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER }}
+        run: |
+          if ("${{ inputs.pilot_self_sign }}" -eq "true") {
+            throw 'Choose either the authorized remote API or the self-signed test certificate, not both.'
+          }
+          if ("${{ inputs.pilot }}" -ne "true") {
+            throw 'pilot_sign requires pilot=true; non-pilot signing follows the original RDGen flow.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:PILOT_SIGN_BASE_URL) -or
+              [string]::IsNullOrWhiteSpace($env:PILOT_SIGN_API_KEY) -or
+              [string]::IsNullOrWhiteSpace($env:PILOT_SIGN_EXPECTED_PUBLISHER)) {
+            throw 'Missing authorized signing settings: SIGN_BASE_URL, SIGN_API_KEY, or ADMINDESK_SIGN_EXPECTED_PUBLISHER.'
+          }
+          if (-not $env:PILOT_SIGN_BASE_URL.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Remote signing requires an HTTPS endpoint.'
+          }
+          Write-Host 'Authorized signer configuration found; signing will be verified before artifact upload.'
+
+      - name: Preflight AdminDesk self-signed pilot certificate
+        if: ${{ inputs.pilot_self_sign }}
+        shell: pwsh
+        env:
+          PILOT_SELF_SIGN_ENABLED: ${{ vars.ADMINDESK_ENABLE_SELF_SIGNING }}
+          ADMINDESK_SELF_SIGN_PFX_BASE64: ${{ secrets.ADMINDESK_SELF_SIGN_PFX_BASE64 }}
+          ADMINDESK_SELF_SIGN_PFX_PASSWORD: ${{ secrets.ADMINDESK_SELF_SIGN_PFX_PASSWORD }}
+          PILOT_SELF_SIGN_EXPECTED_THUMBPRINT: ${{ vars.ADMINDESK_SELF_SIGN_EXPECTED_THUMBPRINT }}
+          PILOT_SELF_SIGN_EXPECTED_SUBJECT: ${{ vars.ADMINDESK_SELF_SIGN_EXPECTED_SUBJECT }}
+        run: |
+          if ("${{ inputs.pilot }}" -ne "true") {
+            throw 'pilot_self_sign requires pilot=true.'
+          }
+          if ("${{ inputs.pilot_sign }}" -eq "true") {
+            throw 'Choose only one pilot signing method.'
+          }
+          if ($env:PILOT_SELF_SIGN_ENABLED -ne 'true') {
+            throw 'Set repository variable ADMINDESK_ENABLE_SELF_SIGNING=true before requesting a self-signed pilot.'
+          }
+          & "$env:RUNNER_TEMP/admindesk-self-sign-pilot.ps1" -Stage Preflight
 
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v9
@@ -130,20 +224,30 @@ jobs:
         run: |
           echo "STATUS_URL=${{ env.apiServer }}/api/updategh" >> $env:GITHUB_ENV
 
-      - name: Checkout source code
-        if: ${{ env.VERSION != 'master' }}
+      # Pilot only: build from the reviewed AdminDesk snapshot, not upstream RustDesk.
+      # The bridge and third-party prerequisites still use RustDesk core 1.5.1.
+      - name: Verify AdminDesk pilot input
+        shell: bash
+        run: |
+          if [ "${{ inputs.version }}" != "1.5.1" ]; then
+            echo "::error::AdminDesk pilot requires RustDesk core version 1.5.1."
+            exit 1
+          fi
+
+      - name: Checkout pinned AdminDesk 1.5.2 source (pilot)
         uses: actions/checkout@v7
         with:
-          repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
+          repository: babakghafouri/Admindesk
+          ref: 4bbb91323272d39cb8c36cac54718848e4becf0a
           submodules: recursive
 
-      - name: Checkout source code
-        if: ${{ env.VERSION == 'master' }}
-        uses: actions/checkout@v7
-        with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
+      - name: Verify expected AdminDesk UI sources
+        shell: bash
+        run: |
+          test -f flutter/lib/desktop/widgets/admindesk_dashboard.dart
+          test -f flutter/lib/desktop/widgets/promo_carousel.dart
+          test -f flutter/pubspec.yaml
+          grep -q 'version: 1.5.2+69' flutter/pubspec.yaml
 
       - name: Set custom app version
         continue-on-error: true
@@ -674,13 +778,34 @@ jobs:
           name: topmostwindow-artifacts
           path: "./rustdesk"
       
+      - name: Sign pilot inner EXE/DLL via authorized API
+        if: ${{ inputs.pilot && inputs.pilot_sign }}
+        shell: pwsh
+        env:
+          PILOT_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL }}
+          PILOT_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY }}
+          PILOT_SIGN_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER }}
+        run: |
+          & "$env:RUNNER_TEMP/admindesk-remote-sign-pilot.ps1" -Stage InnerBinaries -Path "./rustdesk"
+
+      - name: Sign pilot inner EXE/DLL with AdminDesk self-signed certificate
+        if: ${{ inputs.pilot && inputs.pilot_self_sign }}
+        shell: pwsh
+        env:
+          PILOT_SELF_SIGN_EXPECTED_THUMBPRINT: ${{ vars.ADMINDESK_SELF_SIGN_EXPECTED_THUMBPRINT }}
+          PILOT_SELF_SIGN_EXPECTED_SUBJECT: ${{ vars.ADMINDESK_SELF_SIGN_EXPECTED_SUBJECT }}
+        run: |
+          & "$env:RUNNER_TEMP/admindesk-self-sign-pilot.ps1" -Stage InnerBinaries -Path "./rustdesk"
+
       - name: zip dlls
+        if: ${{ !inputs.pilot }}
         continue-on-error: true
         shell: pwsh
         run: |
           Compress-Archive -Path ./rustdesk/*.dll, ./rustdesk/*.exe -DestinationPath ./rustdesk/unsigned_files.zip -CompressionLevel Fastest
 
       - name: sign dlls
+        if: ${{ !inputs.pilot }}
         continue-on-error: true
         shell: bash
         run: |
@@ -695,6 +820,7 @@ jobs:
           fi
 
       - name: unzip dlls
+        if: ${{ !inputs.pilot }}
         continue-on-error: true
         shell: pwsh
         run: |
@@ -748,13 +874,34 @@ jobs:
           mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
           sha256sum ../../SignOutput/rustdesk.msi
 
+      - name: Sign pilot EXE/MSI installers via authorized API
+        if: ${{ inputs.pilot && inputs.pilot_sign }}
+        shell: pwsh
+        env:
+          PILOT_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL }}
+          PILOT_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY }}
+          PILOT_SIGN_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER }}
+        run: |
+          & "$env:RUNNER_TEMP/admindesk-remote-sign-pilot.ps1" -Stage Installers -Path "./SignOutput"
+
+      - name: Sign pilot EXE/MSI installers with AdminDesk self-signed certificate
+        if: ${{ inputs.pilot && inputs.pilot_self_sign }}
+        shell: pwsh
+        env:
+          PILOT_SELF_SIGN_EXPECTED_THUMBPRINT: ${{ vars.ADMINDESK_SELF_SIGN_EXPECTED_THUMBPRINT }}
+          PILOT_SELF_SIGN_EXPECTED_SUBJECT: ${{ vars.ADMINDESK_SELF_SIGN_EXPECTED_SUBJECT }}
+        run: |
+          & "$env:RUNNER_TEMP/admindesk-self-sign-pilot.ps1" -Stage Installers -Path "./SignOutput"
+
       - name: zip exe and msi
+        if: ${{ !inputs.pilot }}
         continue-on-error: true
         shell: pwsh
         run: |
           Compress-Archive -Path ./SignOutput/*.exe, ./SignOutput/*.msi -DestinationPath ./SignOutput/unsigned_files.zip -CompressionLevel Fastest
 
       - name: sign exe and msi
+        if: ${{ !inputs.pilot }}
         continue-on-error: true
         shell: bash
         run: |
@@ -769,6 +916,7 @@ jobs:
           fi
 
       - name: unzip exe and msi
+        if: ${{ !inputs.pilot }}
         continue-on-error: true
         shell: pwsh
         run: |
@@ -786,7 +934,7 @@ jobs:
           mv ./SignOutput/rustdesk.msi "./SignOutput/${{ env.filename }}.msi" || echo "rustdesk"
 
       - name: send file to rdgen server
-        if: ${{ env.rdgen == 'true' }}
+        if: ${{ !inputs.pilot && env.rdgen == 'true' }}
         uses: nick-fields/retry@v4
         with:
           timeout_minutes: 10
@@ -798,7 +946,7 @@ jobs:
             curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client || true
 
       - name: send file to api server
-        if: ${{ env.rdgen == 'false' }}
+        if: ${{ !inputs.pilot && env.rdgen == 'false' }}
         uses: nick-fields/retry@v4
         with:
           timeout_minutes: 10
@@ -808,6 +956,54 @@ jobs:
           command: |
             curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
             curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" ${{ env.apiServer }}/api/save_custom_client || true
+
+      # Experimental output belongs to this Actions run, not an external
+      # generator server and never a GitHub Release.
+      - name: Validate generated EXE and MSI
+        if: ${{ inputs.pilot }}
+        shell: pwsh
+        env:
+          PILOT_SELF_SIGN_EXPECTED_THUMBPRINT: ${{ vars.ADMINDESK_SELF_SIGN_EXPECTED_THUMBPRINT }}
+          PILOT_SELF_SIGN_EXPECTED_SUBJECT: ${{ vars.ADMINDESK_SELF_SIGN_EXPECTED_SUBJECT }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $output = "./SignOutput"
+          foreach ($name in @("AdminDeskPilot.exe", "AdminDeskPilot.msi")) {
+            $p = Join-Path $output $name
+            if (-not (Test-Path -LiteralPath $p -PathType Leaf)) {
+              throw "Missing required pilot installer: $p"
+            }
+            $hash = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash
+            Write-Host "$name SHA256 $hash"
+            $signature = Get-AuthenticodeSignature -LiteralPath $p
+            Write-Host "$name Authenticode: $($signature.Status)"
+            $signingRequested = ("${{ inputs.pilot_sign }}" -eq "true" -or "${{ inputs.pilot_self_sign }}" -eq "true")
+            if ($signingRequested -and $signature.Status -ne "Valid") {
+              throw "Expected signed pilot installer but received $($signature.Status): $name"
+            }
+            if ("${{ inputs.pilot_self_sign }}" -eq "true") {
+              $expectedThumbprint = $env:PILOT_SELF_SIGN_EXPECTED_THUMBPRINT.Replace(' ', '').ToUpperInvariant()
+              if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint.ToUpperInvariant() -ne $expectedThumbprint) {
+                throw "Unexpected self-signing certificate on $name."
+              }
+              if ($signature.SignerCertificate.Subject -ne $env:PILOT_SELF_SIGN_EXPECTED_SUBJECT) {
+                throw "Unexpected self-signing publisher subject on $name."
+              }
+              if ($null -eq $signature.TimeStamperCertificate) {
+                throw "Missing trusted timestamp on self-signed pilot installer: $name"
+              }
+            }
+          }
+      - name: Upload pilot installers as short-lived artifacts (not a release)
+        if: ${{ inputs.pilot }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: AdminDesk-RDGen-${{ inputs.pilot_sign && 'signed' || inputs.pilot_self_sign && 'self-signed' || 'unsigned' }}-pilot-${{ github.run_number }}
+          path: |
+            SignOutput/AdminDeskPilot.exe
+            SignOutput/AdminDeskPilot.msi
+          if-no-files-found: error
+          retention-days: 2
 
   cleanup:
     needs: [build-for-windows-flutter]

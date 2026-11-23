@@ -1,0 +1,174 @@
+name: AdminDesk source compatibility smoke test
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/generator-windows.yml'
+      - '.github/workflows/admindesk-source-smoke.yml'
+      - 'docs/ADMINDESK_RDGEN_PILOT.md'
+      - '.github/workflows/admindesk-rdgen-full-pilot.yml'
+      - '.github/scripts/admindesk-remote-sign-pilot.ps1'
+      - '.github/scripts/admindesk-self-sign-pilot.ps1'
+      - '.github/workflows/admindesk-signing-readiness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signing-prerequisites:
+    name: Check remote signing configuration (no values revealed)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Inspect signing configuration presence only
+        shell: bash
+        env:
+          HAS_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL != '' }}
+          HAS_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY != '' }}
+          HAS_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER != '' }}
+          SIGNING_ENABLED: ${{ vars.ADMINDESK_ENABLE_PILOT_SIGNING == 'true' }}
+        run: |
+          set -euo pipefail
+          echo '## Signing prerequisite check (no keys exposed)' >> "$GITHUB_STEP_SUMMARY"
+          echo '| Configuration | State |' >> "$GITHUB_STEP_SUMMARY"
+          echo '| --- | --- |' >> "$GITHUB_STEP_SUMMARY"
+          count=0
+          for key in HAS_SIGN_BASE_URL HAS_SIGN_API_KEY HAS_EXPECTED_PUBLISHER SIGNING_ENABLED; do
+            case "$key" in
+              HAS_SIGN_BASE_URL) label='SIGN_BASE_URL secret' ;;
+              HAS_SIGN_API_KEY) label='SIGN_API_KEY secret' ;;
+              HAS_EXPECTED_PUBLISHER) label='ADMINDESK_SIGN_EXPECTED_PUBLISHER variable' ;;
+              SIGNING_ENABLED) label='ADMINDESK_ENABLE_PILOT_SIGNING == true' ;;
+            esac
+            if [[ "${!key}" == 'true' ]]; then
+              printf '| %s | Present |\n' "$label" >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf '| %s | Missing / disabled |\n' "$label" >> "$GITHUB_STEP_SUMMARY"
+              count=$((count+1))
+            fi
+          done
+          if (( count > 0 )); then
+            echo "::warning::$count signing prerequisites are missing or disabled; no signed artifact can be produced."
+            echo '**Status:** Not ready for signing.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Configuration is present. Ownership/authorization and real signature validity remain unverified.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'No credentials, URLs, certificates or binaries were exposed or submitted.' >> "$GITHUB_STEP_SUMMARY"
+
+  source-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out generator experiment
+        uses: actions/checkout@v4
+      - name: Confirm pilot is isolated and source pinned
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('.github/workflows/generator-windows.yml').read_text()
+          expected = '4bbb91323272d39cb8c36cac54718848e4becf0a'
+          assert 'repository: babakghafouri/Admindesk' in s
+          assert f'ref: {expected}' in s
+          assert 'AdminDesk pilot requires RustDesk core version 1.5.1' in s
+          assert 'sign dlls' in s and 'sign exe and msi' in s
+          print('Generator source contract OK. Signing has NOT been tested.')
+          PY
+      - name: Validate remote signing helper PowerShell syntax
+        shell: pwsh
+        run: |
+          $path = '.github/scripts/admindesk-remote-sign-pilot.ps1'
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path $path).Path, [ref]$tokens, [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw 'PowerShell signing helper has syntax errors.'
+          }
+          Write-Host 'Remote signing helper parser: PASS (no real certificate used).'
+      - name: Validate self-signing helper PowerShell syntax
+        shell: pwsh
+        run: |
+          $path = '.github/scripts/admindesk-self-sign-pilot.ps1'
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path $path).Path, [ref]$tokens, [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw 'Self-signing helper has syntax errors.'
+          }
+          Write-Host 'Self-signing helper parser: PASS (no real certificate used).'
+      - name: Assert signing mode is explicitly opt-in
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          w = Path('.github/workflows/generator-windows.yml').read_text()
+          caller = Path('.github/workflows/admindesk-rdgen-full-pilot.yml').read_text()
+          assert "pilot_sign:" in caller
+          assert "inputs.pilot_sign" in caller
+          assert "pilot_self_sign:" in caller
+          assert "inputs.pilot_self_sign" in caller
+          assert 'secrets: inherit' in caller
+          assert "inputs.pilot && inputs.pilot_sign" in w
+          assert "inputs.pilot && inputs.pilot_self_sign" in w
+          assert "ADMINDESK_SIGN_EXPECTED_PUBLISHER" in w
+          assert "ADMINDESK_SELF_SIGN_PFX_BASE64" in w
+          assert "ADMINDESK_SELF_SIGN_EXPECTED_THUMBPRINT" in w
+          assert "Upload pilot installers as short-lived artifacts" in w
+          print('Remote and self-signed opt-in contract: PASS')
+          PY
+      - name: Check out pinned AdminDesk source
+        uses: actions/checkout@v4
+        with:
+          repository: babakghafouri/Admindesk
+          ref: 4bbb91323272d39cb8c36cac54718848e4becf0a
+          path: admindesk-source
+          submodules: false
+      - name: Verify AdminDesk UI and release version exist
+        shell: bash
+        run: |
+          test -f admindesk-source/flutter/lib/desktop/widgets/admindesk_dashboard.dart
+          test -f admindesk-source/flutter/lib/desktop/widgets/promo_carousel.dart
+          test -f admindesk-source/flutter/lib/desktop/widgets/admindesk_titlebar.dart
+          grep -q '^version: 1.5.2+69' admindesk-source/flutter/pubspec.yaml
+          test "$(git -C admindesk-source rev-parse HEAD)" = "4bbb91323272d39cb8c36cac54718848e4becf0a"
+          echo 'AdminDesk source/version contract OK. Full Windows compilation NOT performed.'
+
+  windows-flutter-compatibility:
+    name: AdminDesk 1.5.2 Flutter analysis on Windows
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - name: Check out pinned AdminDesk source
+        uses: actions/checkout@v4
+        with:
+          repository: babakghafouri/Admindesk
+          ref: 4bbb91323272d39cb8c36cac54718848e4becf0a
+          persist-credentials: false
+      - name: Install Flutter 3.24.5 (matching AdminDesk build)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.24.5'
+          cache: true
+      - name: Resolve dependencies
+        working-directory: flutter
+        run: flutter pub get
+      - name: Analyze AdminDesk custom Windows UI
+        working-directory: flutter
+        run: >-
+          flutter analyze --no-pub --no-fatal-infos
+          lib/common/widgets/peer_card.dart
+          lib/common/widgets/peer_tab_page.dart
+          lib/common/widgets/peers_view.dart
+          lib/desktop/pages/connection_page.dart
+          lib/desktop/pages/desktop_setting_page.dart
+          lib/desktop/widgets/admindesk_credentials.dart
+          lib/desktop/widgets/admindesk_dashboard.dart
+          lib/desktop/widgets/admindesk_titlebar.dart
+          lib/desktop/widgets/devices_table.dart
+          lib/desktop/widgets/tabbar_widget.dart
+          lib/desktop/widgets/promo_carousel.dart

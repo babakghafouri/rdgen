@@ -1,0 +1,51 @@
+name: AdminDesk signing readiness diagnostic
+
+on:
+  push:
+    branches:
+      - experiment/admindesk-152-windows-generator
+    paths:
+      - '.github/workflows/admindesk-signing-readiness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signing-readiness:
+    name: Check required signing configuration (no signing attempted)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Inspect presence of required signing settings
+        shell: bash
+        env:
+          HAS_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL != '' }}
+          HAS_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY != '' }}
+          HAS_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER != '' }}
+          SIGNING_ENABLED: ${{ vars.ADMINDESK_ENABLE_PILOT_SIGNING == 'true' }}
+        run: |
+          set -euo pipefail
+          printf '## AdminDesk pilot code-signing readiness\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '| Check | Result |\n| --- | --- |\n' >> "$GITHUB_STEP_SUMMARY"
+          count=0
+          for pair in             'Signing API base URL:HAS_SIGN_BASE_URL'             'Signing API access key:HAS_SIGN_API_KEY'             'Expected certificate publisher:HAS_EXPECTED_PUBLISHER'             'Signing explicitly enabled:SIGNING_ENABLED'
+          do
+            description="${pair%%:*}"
+            variable="${pair#*:}"
+            value="${!variable}"
+            if [[ "$value" == 'true' ]]; then
+              printf '| %s | Configured |\n' "$description" >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf '| %s | Missing / disabled |\n' "$description" >> "$GITHUB_STEP_SUMMARY"
+              count=$((count+1))
+            fi
+          done
+          printf '\n' >> "$GITHUB_STEP_SUMMARY"
+          if (( count > 0 )); then
+            echo "::warning::$count code-signing settings are missing or disabled. No signed AdminDesk binary can be produced yet."
+            printf '**Result:** Not ready to request a signed build.\n' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::All four signing settings appear present. This does NOT verify certificate ownership or authorization."
+            printf '**Result:** Configuration present. Certificate ownership, authorization, and actual Authenticode signature have not been tested.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          printf '\nNo API credentials or URLs were printed, and no file was submitted for signing.\n' >> "$GITHUB_STEP_SUMMARY"
