@@ -31,8 +31,8 @@ A dedicated workflow now allows testing the **real RDGen Windows packaging pipel
 - Trigger: a push to this exact experimental branch changing the pilot workflow/its dependencies, or manual dispatch.
 - Core input: RustDesk `1.5.1`; source remains pinned to AdminDesk `4bbb91323272d39cb8c36cac54718848e4becf0a`.
 - Synthetic, public JSON configuration is generated locally and encrypted using a fixed **public test-only password**. It contains no private key, account, remote desktop credential or personally identifiable information.
-- Signing is OFF by default. An authorized opt-in signing request uses a configured remote Signing API. External generator callbacks and GitHub Release publication are always disabled in the pilot.
-- On success it uploads `AdminDeskPilot.exe` and `AdminDeskPilot.msi` as short-lived pilot artifacts; the default is **UNSIGNED**. With authorized signing enabled, both must pass Authenticode verification before upload.
+- Signing is OFF by default. The pilot supports two separate opt-in paths: an authorized remote Signing API, or the AdminDesk self-signed PFX for isolated testing. They cannot be enabled together. External generator callbacks and GitHub Release publication are always disabled in the pilot.
+- On success it uploads `AdminDeskPilot.exe` and `AdminDeskPilot.msi` as short-lived pilot artifacts; the default is **UNSIGNED**. A self-signed run is labeled **SELF-SIGNED** and must pass Authenticode, publisher, and timestamp checks before upload.
 - The workflow fails if either installer file is missing, and logs SHA-256 and Authenticode status without suggesting unsigned files are trusted.
 - The normal RDGen web-generated mode is unchanged by these pilot-specific branches.
 
@@ -77,6 +77,47 @@ If `pilot_sign` is false or omitted, builds stay **unsigned**, with artifact nam
 
 **Current limitation:** We cannot produce a real certificate signature from the public fork or the screenshots alone. It requires an actual authorized signing API (or another approved signing provider) and its corresponding credentials. The earlier successfully signed original RDGen example used a certificate issued to *Bayside Computer Systems Inc*; it cannot legally or technically be assumed available to AdminDesk.
 
+
+## Local self-signed CI signing (test-only)
+
+This is a separate option for testing the certificate created locally as \`CN=AdminDesk Development\`. It imports a PFX into the temporary Windows Actions runner, adds only the public certificate to that runner's CurrentUser Root and TrustedPublisher stores, signs the inner EXE/DLL files and final EXE/MSI files, and verifies the expected thumbprint, subject, Authenticode status, and RFC 3161 timestamp.
+
+**This does not create a publicly trusted publisher and does not remove SmartScreen warnings on other computers.** The certificate is self-signed. The workflow trusts it only inside its disposable runner so that the build can verify its own signatures. Do not distribute these artifacts as a trusted production release.
+
+In \`babakghafouri/rdgen\` open **Settings → Secrets and variables → Actions** and add:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| Repository secret | \`ADMINDESK_SELF_SIGN_PFX_BASE64\` | Base64 text of the PFX containing the private key |
+| Repository secret | \`ADMINDESK_SELF_SIGN_PFX_PASSWORD\` | Password used to protect that PFX |
+| Repository variable | \`ADMINDESK_SELF_SIGN_EXPECTED_THUMBPRINT\` | Exact certificate thumbprint, without spaces |
+| Repository variable | \`ADMINDESK_SELF_SIGN_EXPECTED_SUBJECT\` | Exact subject, currently \`CN=AdminDesk Development\` |
+| Repository variable | \`ADMINDESK_ENABLE_SELF_SIGNING\` | \`true\` only while intentionally requesting a self-signed test |
+
+Never put the PFX, its password, or Base64 content in a commit, issue, PR, or chat. Do not reuse the PFX password as a repository variable.
+
+To export the existing certificate on the Windows machine where it was created, first test whether its private key is exportable. In PowerShell:
+
+\`\`\`powershell
+$thumbprint = 'AA306190E1BDBCF31364FB82AB98FEAE50A8D802'
+$cert = Get-Item "Cert:\\CurrentUser\\My\\$thumbprint"
+if (-not $cert.HasPrivateKey) { throw 'The certificate has no private key.' }
+
+$pfxPath = Join-Path $env:USERPROFILE 'Desktop\\AdminDesk-CI.pfx'
+$pfxPassword = Read-Host 'Choose a strong PFX password' -AsSecureString
+Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pfxPassword -ChainOption EndEntityCertOnly
+
+$b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($pfxPath))
+Set-Clipboard -Value $b64
+Write-Host 'PFX exported. Base64 is in the clipboard; paste it only into the GitHub secret ADMINDESK_SELF_SIGN_PFX_BASE64.'
+\`\`\`
+
+If \`Export-PfxCertificate\` reports that the private key is not exportable, stop and create a **new dedicated test certificate** with an exportable private key; do not try to extract or bypass the existing key's protection. Then export that new certificate and update both expected-certificate repository variables to its actual subject and thumbprint.
+
+After adding the settings, request a self-signed build by incrementing **Self-sign request number** in \`docs/ADMINDESK_SIGN_REQUEST.md\` and committing directly to the experimental branch with the exact message \`[self-sign AdminDesk pilot]\`. The marker and \`ADMINDESK_ENABLE_SELF_SIGNING=true\` are both required. The artifact name will contain \`self-signed-pilot\`. Set the enable variable back to \`false\` after the test.
+
+The workflow timestamps signatures using DigiCert's RFC 3161 timestamp service. Timestamping preserves the signing time; it does **not** make a self-signed certificate publicly trusted.
+
 ## Production generator setup (later)
 
 ## How to run the full web-generator path later
@@ -93,7 +134,7 @@ If `pilot_sign` is false or omitted, builds stay **unsigned**, with artifact nam
 
 The original RDGen Windows workflow uses `SIGN_BASE_URL` and `SIGN_API_KEY` secrets for a remote signing service. These secrets and the third-party publisher's certificate do **not** automatically transfer to a fork. **No key/certificate from Bayside Computer Systems Inc or any third party is granted by this fork.** The upstream workflow contains fallback-to-unsigned behavior and `continue-on-error: true` around signing; successful GitHub Actions status is NOT proof of a signed installer.
 
-The independent SignPath Foundation application remains the primary requested path for an authorized, trusted AdminDesk publisher signature. No fake or self-signed publisher identity should be presented as trusted.
+The independent SignPath Foundation application remains the primary requested path for an authorized, trusted AdminDesk publisher signature. The local self-signed route above is only for isolated pipeline testing; it must never be presented as a publicly trusted publisher identity.
 
 ## Safety and rollback
 

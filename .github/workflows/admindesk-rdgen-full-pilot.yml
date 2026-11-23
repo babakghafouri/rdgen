@@ -10,11 +10,17 @@ on:
       - '.github/workflows/bridge.yml'
       - '.github/workflows/fetch-encrypted-secrets.yml'
       - '.github/workflows/third-party-RustDeskTempTopMostWindow.yml'
+      - '.github/scripts/admindesk-self-sign-pilot.ps1'
       - 'docs/ADMINDESK_SIGN_REQUEST.md'
   workflow_dispatch:
     inputs:
       pilot_sign:
         description: 'Sign via authorized remote API; fails unless all signing settings are configured'
+        type: boolean
+        required: false
+        default: false
+      pilot_self_sign:
+        description: 'Sign with the AdminDesk self-signed certificate for an isolated test only'
         type: boolean
         required: false
         default: false
@@ -33,4 +39,5 @@ jobs:
       zip_url: ''
       pilot: true
       pilot_sign: ${{ inputs.pilot_sign || (github.event_name == 'push' && github.event.head_commit.message == '[sign AdminDesk pilot]' && vars.ADMINDESK_ENABLE_PILOT_SIGNING == 'true') }}
+      pilot_self_sign: ${{ inputs.pilot_self_sign || (github.event_name == 'push' && github.event.head_commit.message == '[self-sign AdminDesk pilot]' && vars.ADMINDESK_ENABLE_SELF_SIGNING == 'true') }}
     secrets: inherit

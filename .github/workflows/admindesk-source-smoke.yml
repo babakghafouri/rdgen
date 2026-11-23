@@ -7,6 +7,7 @@ on:
       - 'docs/ADMINDESK_RDGEN_PILOT.md'
       - '.github/workflows/admindesk-rdgen-full-pilot.yml'
       - '.github/scripts/admindesk-remote-sign-pilot.ps1'
+      - '.github/scripts/admindesk-self-sign-pilot.ps1'
       - '.github/workflows/admindesk-signing-readiness.yml'
   workflow_dispatch:
 
@@ -84,7 +85,21 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             throw 'PowerShell signing helper has syntax errors.'
           }
-          Write-Host 'Signing helper PowerShell parser: PASS (no real certificate used).'
+          Write-Host 'Remote signing helper parser: PASS (no real certificate used).'
+      - name: Validate self-signing helper PowerShell syntax
+        shell: pwsh
+        run: |
+          $path = '.github/scripts/admindesk-self-sign-pilot.ps1'
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path $path).Path, [ref]$tokens, [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw 'Self-signing helper has syntax errors.'
+          }
+          Write-Host 'Self-signing helper parser: PASS (no real certificate used).'
       - name: Assert signing mode is explicitly opt-in
         shell: bash
         run: |
@@ -94,11 +109,16 @@ jobs:
           caller = Path('.github/workflows/admindesk-rdgen-full-pilot.yml').read_text()
           assert "pilot_sign:" in caller
           assert "inputs.pilot_sign" in caller
+          assert "pilot_self_sign:" in caller
+          assert "inputs.pilot_self_sign" in caller
           assert 'secrets: inherit' in caller
           assert "inputs.pilot && inputs.pilot_sign" in w
+          assert "inputs.pilot && inputs.pilot_self_sign" in w
           assert "ADMINDESK_SIGN_EXPECTED_PUBLISHER" in w
+          assert "ADMINDESK_SELF_SIGN_PFX_BASE64" in w
+          assert "ADMINDESK_SELF_SIGN_EXPECTED_THUMBPRINT" in w
           assert "Upload pilot installers as short-lived artifacts" in w
-          print('Explicit authorized signing opt-in contract: PASS')
+          print('Remote and self-signed opt-in contract: PASS')
           PY
       - name: Check out pinned AdminDesk source
         uses: actions/checkout@v4
