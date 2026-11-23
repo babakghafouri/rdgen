@@ -7,12 +7,52 @@ on:
       - 'docs/ADMINDESK_RDGEN_PILOT.md'
       - '.github/workflows/admindesk-rdgen-full-pilot.yml'
       - '.github/scripts/admindesk-remote-sign-pilot.ps1'
+      - '.github/workflows/admindesk-signing-readiness.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  signing-prerequisites:
+    name: Check remote signing configuration (no values revealed)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Inspect signing configuration presence only
+        shell: bash
+        env:
+          HAS_SIGN_BASE_URL: ${{ secrets.SIGN_BASE_URL != '' }}
+          HAS_SIGN_API_KEY: ${{ secrets.SIGN_API_KEY != '' }}
+          HAS_EXPECTED_PUBLISHER: ${{ vars.ADMINDESK_SIGN_EXPECTED_PUBLISHER != '' }}
+          SIGNING_ENABLED: ${{ vars.ADMINDESK_ENABLE_PILOT_SIGNING == 'true' }}
+        run: |
+          set -euo pipefail
+          echo '## Signing prerequisite check (no keys exposed)' >> "$GITHUB_STEP_SUMMARY"
+          echo '| Configuration | State |' >> "$GITHUB_STEP_SUMMARY"
+          echo '| --- | --- |' >> "$GITHUB_STEP_SUMMARY"
+          count=0
+          for key in HAS_SIGN_BASE_URL HAS_SIGN_API_KEY HAS_EXPECTED_PUBLISHER SIGNING_ENABLED; do
+            case "$key" in
+              HAS_SIGN_BASE_URL) label='SIGN_BASE_URL secret' ;;
+              HAS_SIGN_API_KEY) label='SIGN_API_KEY secret' ;;
+              HAS_EXPECTED_PUBLISHER) label='ADMINDESK_SIGN_EXPECTED_PUBLISHER variable' ;;
+              SIGNING_ENABLED) label='ADMINDESK_ENABLE_PILOT_SIGNING == true' ;;
+            esac
+            if [[ "${!key}" == 'true' ]]; then
+              printf '| %s | Present |\n' "$label" >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf '| %s | Missing / disabled |\n' "$label" >> "$GITHUB_STEP_SUMMARY"
+              count=$((count+1))
+            fi
+          done
+          if (( count > 0 )); then
+            echo "::warning::$count signing prerequisites are missing or disabled; no signed artifact can be produced."
+            echo '**Status:** Not ready for signing.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Configuration is present. Ownership/authorization and real signature validity remain unverified.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'No credentials, URLs, certificates or binaries were exposed or submitted.' >> "$GITHUB_STEP_SUMMARY"
+
   source-contract:
     runs-on: ubuntu-24.04
     steps:
